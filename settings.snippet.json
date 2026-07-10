@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -File \"%USERPROFILE%\\.claude\\hooks\\voice-guard.ps1\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -File \"%USERPROFILE%\\.claude\\hooks\\speak-response.ps1\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,4 @@
+# Local flag/backup artifacts — nothing here should be committed
+*.bak
+settings.json
+claude-voice-*.txt
