@@ -9,6 +9,20 @@ answers. Flip it off and it's silent again.
 
 ---
 
+## Quick start (copy-paste)
+
+Open **PowerShell** and run this one line — it downloads the project and sets
+everything up:
+
+```powershell
+git clone https://github.com/12TribesofIsrael/claude-voice-mode.git; cd claude-voice-mode; .\install.ps1
+```
+
+Then **restart Claude Code**, turn the voice on with `.\voice-on.ps1`, and
+start talking. That's the whole setup.
+
+---
+
 ## What this actually is (in plain terms)
 
 Claude Code lets you run a little script every time it finishes answering.
