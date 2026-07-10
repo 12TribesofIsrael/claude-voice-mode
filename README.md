@@ -103,8 +103,39 @@ So you don't have to `cd` into this folder, run this once:
 .\add-shortcuts.ps1
 ```
 
-It adds two commands to your PowerShell profile. Open a new terminal and you
-can now type `voice-on` or `voice-off` in **any** folder or VS Code terminal.
+It adds these commands to your PowerShell profile. Open a new terminal and
+you can use them in **any** folder or VS Code terminal:
+
+- `voice-on` / `voice-off` — turn spoken replies on or off
+- `voice-list` — show the voices installed on your PC
+- `voice-set <name>` — pick a voice, e.g. `voice-set Zira`
+
+---
+
+## Changing the voice
+
+List what you have, then pick one:
+
+```powershell
+voice-list
+voice-set Zira      # or David, or a partial name — first match wins
+```
+
+The change takes effect on Claude's next reply. To go back to the default,
+just delete the file `%USERPROFILE%\.claude\hooks\voice-name.txt`.
+
+### Want more voices?
+
+Windows hides some extra voices (like **Microsoft Mark**) from the classic
+speech engine. To unlock them, run this once and click **Yes** at the
+admin prompt:
+
+```powershell
+.\unlock-voices.ps1
+```
+
+Then restart your terminals and `voice-set Mark`. You can also download more
+voices in **Windows Settings → Time & language → Speech → Manage voices**.
 
 ---
 
