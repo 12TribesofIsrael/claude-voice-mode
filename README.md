@@ -88,6 +88,24 @@ When it's ON, just talk to Claude like normal. Every time it finishes a
 reply, you'll hear it. When it's OFF, nothing is spoken and Claude behaves
 exactly as it did before.
 
+### Works in every repo and every window
+
+You install once. The switch is machine-wide, so it applies to **every repo
+and every VS Code / Claude Code window** on your PC at the same time — you
+don't set it up again per project. (A Claude session that was already open
+before you installed needs a restart to pick up the hook.)
+
+### Type `voice-on` / `voice-off` from anywhere
+
+So you don't have to `cd` into this folder, run this once:
+
+```powershell
+.\add-shortcuts.ps1
+```
+
+It adds two commands to your PowerShell profile. Open a new terminal and you
+can now type `voice-on` or `voice-off` in **any** folder or VS Code terminal.
+
 ---
 
 ## When does it stay quiet on purpose?
