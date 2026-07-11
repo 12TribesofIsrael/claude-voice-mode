@@ -112,7 +112,50 @@ you can use them in **any** folder or VS Code terminal:
 
 ---
 
-## Changing the voice
+## Premium natural voices (ElevenLabs) — optional
+
+The free Windows voices are robotic. If you want a genuinely human‑sounding
+voice — for recording content, demos, or just nicer listening — Claude Voice
+Mode can route replies through **ElevenLabs** instead. It's an **opt‑in toggle**:
+the free Windows voice stays the default, and you flip premium on only when you
+want it (so you don't burn credits during all‑day coding).
+
+**A visual control panel** makes it easy — great to show on screen while you
+record. Launch it with:
+
+```powershell
+voice-panel          # after add-shortcuts.ps1, from any terminal
+# or:  .\start-webapp.ps1
+```
+
+It opens a local dashboard (`http://127.0.0.1:8770`) where you can:
+
+- toggle **voice on/off** and **free ⇄ premium**,
+- paste your **ElevenLabs API key** (stored locally, never committed),
+- **pick a voice** from your ElevenLabs library and preview it,
+- choose the **model** (Turbo/Flash = ½ credits, Multilingual v2 = best quality),
+- watch your **plan and remaining credits** in real time,
+- **Test through Claude** to hear the exact pipeline before you record.
+
+**How the pipeline chooses a voice:** when premium is on *and* a key + voice ID
+are set, replies are synthesized by ElevenLabs and played back. On **any**
+problem — offline, bad key, out of credits — it **automatically falls back** to
+the free Windows voice, so you're never left silent.
+
+**Your key** lives in `%USERPROFILE%\.claude\hooks\voice-config.json` (outside
+this repo, gitignored). Get it from ElevenLabs → avatar → **API key**.
+
+> **Cost reality:** ElevenLabs bills ~1 credit per character (½ on Turbo/Flash),
+> and roughly 1,000 characters ≈ 1 minute of speech. Leaving premium on during a
+> full day of coding can burn a monthly plan in a day or two — that's why it's a
+> deliberate toggle. Use free Windows voice for marathons, premium for content.
+
+The panel needs **Python 3** (already required by nothing else here) and only
+talks to ElevenLabs using your own key. Nothing else leaves your machine.
+
+---
+
+## Changing the free Windows voice
 
 List what you have, then pick one:
 

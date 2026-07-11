@@ -2,3 +2,8 @@
 *.bak
 settings.json
 claude-voice-*.txt
+
+# Secrets / local runtime — never commit the API key or its config
+voice-config.json
+webapp/__pycache__/
+__pycache__/

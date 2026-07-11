@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Claude Voice Mode — Control Panel</title>
+<style>
+  :root{
+    --bg:#0b0d12; --panel:#141821; --panel2:#1b2130; --line:#232a3a;
+    --text:#e8ecf4; --muted:#8b94a7; --accent:#7c5cff; --accent2:#28d3a7;
+    --danger:#ff5c7c; --warn:#ffb454; --radius:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 700px at 80% -10%,#1a1f2e 0,transparent 60%),var(--bg);
+    color:var(--text);font:15px/1.5 'Segoe UI',system-ui,-apple-system,sans-serif;min-height:100vh}
+  .wrap{max-width:1040px;margin:0 auto;padding:28px 22px 60px}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+  .logo{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:22px;
+    background:linear-gradient(135deg,var(--accent),#4f8bff);box-shadow:0 6px 24px rgba(124,92,255,.4)}
+  h1{font-size:22px;margin:0;font-weight:650;letter-spacing:.2px}
+  .sub{color:var(--muted);font-size:13px;margin-top:2px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}}
+  .card{background:linear-gradient(180deg,var(--panel),#10141d);border:1px solid var(--line);
+    border-radius:var(--radius);padding:20px}
+  .card h2{margin:0 0 4px;font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .card p.hint{color:var(--muted);font-size:12.5px;margin:0 0 14px}
+  .span2{grid-column:1/-1}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .pill{font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .pill.on{color:#062;background:rgba(40,211,167,.15);border-color:rgba(40,211,167,.4);color:var(--accent2)}
+  .pill.off{color:var(--muted)}
+  /* toggle switch */
+  .switch{position:relative;width:58px;height:32px;flex:0 0 auto}
+  .switch input{display:none}
+  .slider{position:absolute;inset:0;background:#2a3142;border-radius:999px;transition:.2s;cursor:pointer}
+  .slider:before{content:"";position:absolute;width:24px;height:24px;left:4px;top:4px;background:#fff;
+    border-radius:50%;transition:.2s}
+  .switch input:checked + .slider{background:linear-gradient(135deg,var(--accent),#4f8bff)}
+  .switch input:checked + .slider:before{transform:translateX(26px)}
+  .btn{border:0;border-radius:11px;padding:11px 16px;font-weight:600;font-size:14px;cursor:pointer;
+    background:var(--panel2);color:var(--text);border:1px solid var(--line);transition:.15s}
+  .btn:hover{border-color:#39435c}
+  .btn.primary{background:linear-gradient(135deg,var(--accent),#4f8bff);border:0;color:#fff}
+  .btn.ok{background:linear-gradient(135deg,#1aa87f,var(--accent2));border:0;color:#04241b}
+  .btn.sm{padding:7px 11px;font-size:12.5px;border-radius:9px}
+  input[type=text],input[type=password],select,textarea{width:100%;background:#0d1119;border:1px solid var(--line);
+    color:var(--text);border-radius:10px;padding:10px 12px;font:inherit;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+  label.lab{display:block;font-size:12px;color:var(--muted);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.5px}
+  .flex{display:flex;gap:10px}
+  .flex>*{flex:1}
+  .meter{height:10px;border-radius:999px;background:#0d1119;border:1px solid var(--line);overflow:hidden;margin-top:8px}
+  .meter>i{display:block;height:100%;background:linear-gradient(90deg,var(--accent2),#4f8bff)}
+  .big{font-size:26px;font-weight:700}
+  .muted{color:var(--muted)}
+  .voices{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:12px;
+    max-height:340px;overflow:auto;padding:2px}
+  .voice{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel2);cursor:pointer;transition:.15s}
+  .voice:hover{border-color:#39435c}
+  .voice.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;background:#1a1836}
+  .voice .vn{font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:6px}
+  .voice .vid{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--muted);margin-top:4px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .voice .tags{margin-top:8px;display:flex;flex-wrap:wrap;gap:5px}
+  .tag{font-size:10.5px;padding:2px 7px;border-radius:999px;background:#0d1119;border:1px solid var(--line);color:var(--muted)}
+  .play{border:0;background:#0d1119;border:1px solid var(--line);color:var(--text);border-radius:8px;
+    width:28px;height:28px;cursor:pointer;font-size:12px}
+  .play:hover{border-color:var(--accent)}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);
+    border:1px solid var(--line);padding:11px 18px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none}
+  .toast.show{opacity:1;bottom:30px}
+  .statusbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+  .chip{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);
+    padding:9px 14px;border-radius:12px;font-size:13px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+  .dot.green{background:var(--accent2);box-shadow:0 0 10px var(--accent2)}
+  .dot.purple{background:var(--accent);box-shadow:0 0 10px var(--accent)}
+  .dot.red{background:var(--danger)}
+  a{color:#8fb2ff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🔊</div>
+    <div>
+      <h1>Claude Voice Mode</h1>
+      <div class="sub">Control panel · free Windows voice ⇄ premium ElevenLabs</div>
+    </div>
+  </header>
+
+  <div class="statusbar">
+    <div class="chip"><span id="dotEnabled" class="dot"></span><span id="txtEnabled">Voice: —</span></div>
+    <div class="chip"><span id="dotMode" class="dot"></span><span id="txtMode">Mode: —</span></div>
+    <div class="chip"><span id="dotVoice" class="dot"></span><span id="txtVoice">Voice pick: —</span></div>
+    <div class="chip"><span id="dotKey" class="dot"></span><span id="txtKey">Key: —</span></div>
+  </div>
+
+  <div class="grid">
+    <!-- Master switches -->
+    <div class="card">
+      <h2>⚡ Switches</h2>
+      <p class="hint">Master on/off, and which engine reads replies.</p>
+      <div class="row" style="margin-bottom:16px">
+        <div><b>Voice mode</b><div class="muted" style="font-size:12.5px">Claude reads replies aloud</div></div>
+        <label class="switch"><input type="checkbox" id="swEnabled"><span class="slider"></span></label>
+      </div>
+      <div class="row">
+        <div><b>Premium (ElevenLabs)</b><div class="muted" style="font-size:12.5px">Natural voice · uses credits</div></div>
+        <label class="switch"><input type="checkbox" id="swPremium"><span class="slider"></span></label>
+      </div>
+      <label class="lab">Free Windows fallback voice</label>
+      <select id="winVoice">
+        <option value="Zira">Zira (smoother)</option>
+        <option value="David">David</option>
+      </select>
+    </div>
+
+    <!-- Credits -->
+    <div class="card">
+      <h2>📊 ElevenLabs plan &amp; credits</h2>
+      <p class="hint">Your real usage this billing cycle.</p>
+      <div class="row">
+        <div><div class="muted" style="font-size:12px">PLAN</div><div class="big" id="tier">—</div></div>
+        <button class="btn sm" onclick="loadCredits()">↻ Refresh</button>
+      </div>
+      <div style="margin-top:14px">
+        <div class="row"><span class="muted" id="credLabel">credits used</span><span id="credNums" class="muted">—</span></div>
+        <div class="meter"><i id="credBar" style="width:0%"></i></div>
+        <div class="muted" style="font-size:12px;margin-top:8px" id="credRemain"></div>
+      </div>
+    </div>
+
+    <!-- API key -->
+    <div class="card span2">
+      <h2>🔑 ElevenLabs API key</h2>
+      <p class="hint">Stored locally in your Claude hooks folder — never committed to git. Get it from your ElevenLabs profile (top-right avatar → “API key”).</p>
+      <div class="flex">
+        <input type="password" id="apiKey" placeholder="paste sk_… here" autocomplete="off">
+        <button class="btn primary" style="flex:0 0 auto" onclick="saveKey()">Save &amp; verify</button>
+      </div>
+      <div class="muted" style="font-size:12.5px;margin-top:8px" id="keyStatus"></div>
+    </div>
+
+    <!-- Voice picker -->
+    <div class="card span2">
+      <h2>🎙️ Premium voice</h2>
+      <p class="hint">Click a voice to select it. ▶ previews the sample (free). Selected voice ID is saved automatically.</p>
+      <div class="flex" style="align-items:center">
+        <input type="text" id="voiceSearch" placeholder="filter voices by name…" oninput="renderVoices()">
+        <button class="btn sm" style="flex:0 0 auto" onclick="loadVoices()">↻ Load voices</button>
+      </div>
+      <div class="voices" id="voiceList"><div class="muted" style="padding:20px">Save your API key, then load voices.</div></div>
+
+      <div class="flex" style="margin-top:16px">
+        <div style="flex:2">
+          <label class="lab">Model (quality vs. cost)</label>
+          <select id="modelId">
+            <option value="eleven_turbo_v2_5">Turbo v2.5 — cheapest, fast (½ credits)</option>
+            <option value="eleven_flash_v2_5">Flash v2.5 — fastest, low latency (½ credits)</option>
+            <option value="eleven_multilingual_v2">Multilingual v2 — best quality (full credits)</option>
+          </select>
+        </div>
+        <div style="flex:0 0 auto;align-self:flex-end">
+          <button class="btn ok" onclick="testVoice()">🔈 Test through Claude</button>
+        </div>
+      </div>
+      <label class="lab">Preview text</label>
+      <textarea id="testText" rows="2">Peace and blessings. This is your premium ElevenLabs voice for creating content. Let's build something powerful.</textarea>
+    </div>
+  </div>
+</div>
+
+<audio id="preview"></audio>
+<div class="toast" id="toast"></div>
+
+<script>
+let VOICES = [], SELECTED = "";
+
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
+async function api(path,method,body){
+  const o={method:method||'GET',headers:{'Content-Type':'application/json'}};
+  if(body)o.body=JSON.stringify(body);
+  const r=await fetch(path,o);let d={};try{d=await r.json()}catch(e){}
+  return {ok:r.ok,status:r.status,data:d};
+}
+function setDot(id,cls){const e=document.getElementById(id);e.className='dot '+(cls||'');}
+
+async function loadState(){
+  const {data}=await api('/api/state');
+  document.getElementById('swEnabled').checked=!!data.enabled;
+  document.getElementById('swPremium').checked=!!data.premium;
+  document.getElementById('winVoice').value=data.windowsVoice||'Zira';
+  document.getElementById('modelId').value=data.modelId||'eleven_turbo_v2_5';
+  SELECTED=data.voiceId||"";
+  // status chips
+  setDot('dotEnabled',data.enabled?'green':'');
+  document.getElementById('txtEnabled').textContent='Voice: '+(data.enabled?'ON':'off');
+  setDot('dotMode',data.premium?'purple':'green');
+  document.getElementById('txtMode').textContent='Mode: '+(data.premium?'Premium (ElevenLabs)':'Free (Windows)');
+  setDot('dotVoice',data.voiceName?'purple':'');
+  document.getElementById('txtVoice').textContent='Voice pick: '+(data.voiceName||'none');
+  setDot('dotKey',data.hasKey?'green':'red');
+  document.getElementById('txtKey').textContent='Key: '+(data.hasKey?data.keyMasked:'not set');
+  document.getElementById('keyStatus').textContent=data.hasKey?('Saved key '+data.keyMasked):'No key saved yet.';
+  if(data.hasKey){loadCredits();}
+}
+
+document.getElementById('swEnabled').addEventListener('change',async e=>{
+  await api('/api/enabled','POST',{on:e.target.checked});toast(e.target.checked?'Voice ON':'Voice off');loadState();});
+document.getElementById('swPremium').addEventListener('change',async e=>{
+  await api('/api/premium','POST',{on:e.target.checked});toast(e.target.checked?'Premium ON':'Back to free Windows voice');loadState();});
+document.getElementById('winVoice').addEventListener('change',async e=>{
+  await api('/api/voice','POST',{windowsVoice:e.target.value});toast('Fallback voice: '+e.target.value);});
+document.getElementById('modelId').addEventListener('change',async e=>{
+  await api('/api/voice','POST',{modelId:e.target.value});toast('Model: '+e.target.value);});
+
+async function saveKey(){
+  const key=document.getElementById('apiKey').value.trim();
+  if(!key){toast('Paste a key first');return;}
+  document.getElementById('keyStatus').textContent='Verifying…';
+  const {data}=await api('/api/key','POST',{key});
+  if(data.valid){toast('Key verified ✓');document.getElementById('apiKey').value='';loadState();loadVoices();}
+  else{document.getElementById('keyStatus').textContent='Key saved, but verification failed: '+JSON.stringify(data.subscription);toast('Key saved (unverified)');loadState();}
+}
+
+async function loadCredits(){
+  const {ok,data}=await api('/api/credits');
+  if(!ok){document.getElementById('tier').textContent='—';return;}
+  document.getElementById('tier').textContent=(data.tier||'—');
+  const used=data.used||0,limit=data.limit||0;
+  const pct=limit?Math.min(100,Math.round(used/limit*100)):0;
+  document.getElementById('credNums').textContent=used.toLocaleString()+' / '+limit.toLocaleString();
+  document.getElementById('credBar').style.width=pct+'%';
+  document.getElementById('credRemain').textContent=(data.remaining||0).toLocaleString()+' credits remaining this cycle';
+}
+
+async function loadVoices(){
+  const list=document.getElementById('voiceList');
+  list.innerHTML='<div class="muted" style="padding:20px">Loading voices…</div>';
+  const {ok,data}=await api('/api/voices');
+  if(!ok){list.innerHTML='<div class="muted" style="padding:20px">Could not load voices ('+(data.error||'error')+'). Save a valid key first.</div>';return;}
+  VOICES=data.voices||[];renderVoices();toast(VOICES.length+' voices loaded');
+}
+
+function renderVoices(){
+  const q=(document.getElementById('voiceSearch').value||'').toLowerCase();
+  const list=document.getElementById('voiceList');
+  const items=VOICES.filter(v=>!q||(v.name||'').toLowerCase().includes(q));
+  if(!items.length){list.innerHTML='<div class="muted" style="padding:20px">No voices.</div>';return;}
+  list.innerHTML='';
+  items.forEach(v=>{
+    const el=document.createElement('div');
+    el.className='voice'+(v.voice_id===SELECTED?' sel':'');
+    const tags=Object.values(v.labels||{}).slice(0,4).map(t=>'<span class="tag">'+t+'</span>').join('');
+    el.innerHTML=`<div class="vn"><span>${v.name}</span>
+        <button class="play" title="Preview" onclick="event.stopPropagation();preview('${v.preview_url}')">▶</button></div>
+      <div class="vid">${v.voice_id}</div>
+      <div class="tags">${tags}</div>`;
+    el.onclick=()=>selectVoice(v);
+    list.appendChild(el);
+  });
+}
+
+async function selectVoice(v){
+  SELECTED=v.voice_id;
+  await api('/api/voice','POST',{voiceId:v.voice_id,voiceName:v.name});
+  renderVoices();loadState();toast('Selected '+v.name);
+}
+function preview(url){if(!url){toast('No preview for this voice');return;}const a=document.getElementById('preview');a.src=url;a.play();}
+async function testVoice(){
+  const text=document.getElementById('testText').value||'Testing the selected voice.';
+  await api('/api/test','POST',{text});
+  toast('Speaking through Claude’s pipeline…');
+}
+
+loadState();
+</script>
+</body>
+</html>
