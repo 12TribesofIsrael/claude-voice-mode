@@ -32,11 +32,11 @@ $text = [regex]::Replace($text, '[*_>#|`~]', ' ')                     # stray md
 $text = [regex]::Replace($text, '\s+', ' ').Trim()                    # collapse whitespace
 if ([string]::IsNullOrWhiteSpace($text)) { exit 0 }
 
-# 4. Trim to ~500 chars on a word boundary.
-if ($text.Length -gt 500) {
-    $text = $text.Substring(0, 500)
+# 4. Trim to ~6000 chars on a word boundary.
+if ($text.Length -gt 6000) {
+    $text = $text.Substring(0, 6000)
     $sp = $text.LastIndexOf(' ')
-    if ($sp -gt 400) { $text = $text.Substring(0, $sp) }
+    if ($sp -gt 5400) { $text = $text.Substring(0, $sp) }
 }
 
 # 5. Write the cleaned text to a temp file and hand it to the worker script.

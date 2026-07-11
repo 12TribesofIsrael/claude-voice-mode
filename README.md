@@ -192,8 +192,11 @@ History** → filter to **Quarantine** → find the `powershell.exe` /
 `$s.Rate = 1` (range is -10 slowest to 10 fastest, 0 is normal), then re-run
 `.\install.ps1`.
 
-**It talks too much.** It already trims to ~500 characters. Lower that number
-in `hooks/speak-response.ps1` if you want shorter.
+**It talks too much / gets cut off mid-sentence.** It trims spoken text to
+~6000 characters on a word boundary. Raise or lower that number in
+`hooks/speak-response.ps1` to taste. The `hooks/voice-guard.ps1` hook also
+tells Claude how long spoken replies should be — it currently allows full,
+clear prose; edit that reminder string if you want it terser.
 
 ---
 
