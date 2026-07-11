@@ -17,6 +17,29 @@ if ([string]::IsNullOrWhiteSpace($raw)) { exit 0 }
 try { $data = $raw | ConvertFrom-Json } catch { exit 0 }
 
 $text = $data.last_assistant_message
+
+# Fallback: some Claude Code builds/surfaces don't populate last_assistant_message
+# on the Stop payload. If it's empty, read the reply from the transcript file --
+# walk the JSONL backward to the most recent assistant message that has text.
+if ([string]::IsNullOrWhiteSpace($text) -and $data.transcript_path) {
+    $tp = $data.transcript_path
+    if (Test-Path -LiteralPath $tp) {
+        $lines = Get-Content -LiteralPath $tp -Encoding UTF8
+        for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+            $line = $lines[$i]
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            try { $entry = $line | ConvertFrom-Json } catch { continue }
+            if ($entry.type -ne 'assistant' -and $entry.message.role -ne 'assistant') { continue }
+            $content = $entry.message.content
+            if (-not $content) { continue }
+            $buf = ''
+            if ($content -is [string]) { $buf = $content }
+            else { foreach ($b in $content) { if ($b.type -eq 'text' -and $b.text) { $buf += $b.text + ' ' } } }
+            if (-not [string]::IsNullOrWhiteSpace($buf)) { $text = $buf.Trim(); break }
+        }
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($text)) { exit 0 }   # guards /clear-style empties
 
 # 3. Strip markdown / code / URLs / file paths so only prose is spoken.
