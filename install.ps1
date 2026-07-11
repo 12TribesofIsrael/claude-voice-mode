@@ -44,8 +44,12 @@ $promptHook = @(@{ hooks = @(@{ type = 'command'; command = $guard }) })
 $json.hooks | Add-Member -NotePropertyName Stop            -NotePropertyValue $stopHook   -Force
 $json.hooks | Add-Member -NotePropertyName UserPromptSubmit -NotePropertyValue $promptHook -Force
 
-$json | ConvertTo-Json -Depth 12 | Set-Content -Path $settings -Encoding UTF8
-Write-Host "  wrote hooks into settings.json" -ForegroundColor Cyan
+# Write UTF-8 WITHOUT a BOM. Windows PowerShell 5.1's "Set-Content -Encoding UTF8"
+# prepends a BOM, which Claude Code (Node.js) refuses to parse -- it then silently
+# ignores the whole settings.json and no hooks fire. Use .NET to write BOM-less.
+$out = $json | ConvertTo-Json -Depth 12
+[System.IO.File]::WriteAllText($settings, $out, (New-Object System.Text.UTF8Encoding($false)))
+Write-Host "  wrote hooks into settings.json (UTF-8, no BOM)" -ForegroundColor Cyan
 
 Write-Host ""
 Write-Host "Done. Restart Claude Code, then run .\voice-on.ps1 to start hearing replies." -ForegroundColor Green
