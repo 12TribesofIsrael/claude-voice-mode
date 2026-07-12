@@ -47,9 +47,10 @@ deletes it.
 
 ## Install (one time)
 
-1. Open **PowerShell** and go to this folder:
+1. Open **PowerShell** and go to the folder you cloned (the `git clone`
+   above creates a `claude-voice-mode` folder wherever you ran it):
    ```powershell
-   cd C:\Users\Owner\repos\claude-voice-mode
+   cd claude-voice-mode
    ```
 2. Run the installer:
    ```powershell
@@ -121,12 +122,22 @@ the free Windows voice stays the default, and you flip premium on only when you
 want it (so you don't burn credits during all‑day coding).
 
 **A visual control panel** makes it easy — great to show on screen while you
-record. Launch it with:
+record. The simplest way to open it is to **double-click `Voice Panel.bat`**
+in this folder: it starts the local server in its own window and opens the
+panel in your browser. From there you just click the on/off toggle — no
+PowerShell and no scripts to run by hand.
+
+Prefer the terminal? You can also launch it with:
 
 ```powershell
 voice-panel          # after add-shortcuts.ps1, from any terminal
 # or:  .\start-webapp.ps1
 ```
+
+Whichever way you open it, the panel's on/off switch and the `voice-on.ps1`
+script are two doors to the *same* setting — you don't need to run anything
+before opening the panel. Just keep the little server window open while you
+use it; closing it stops the panel (voice mode itself stays as you left it).
 
 It opens a local dashboard (`http://127.0.0.1:8770`) where you can:
 
