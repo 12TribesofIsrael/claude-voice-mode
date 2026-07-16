@@ -63,6 +63,24 @@ deletes it.
 
 That's it. You only do this once.
 
+### ⚠ Re-run the installer after every `git pull`
+
+The hook scripts *run* from `%USERPROFILE%\.claude\hooks`, which is **outside
+this repo**. `git pull` updates the repo — it does **not** update the copies
+that actually speak. If you pull new code and skip the installer, you get an
+old worker driven by a new control panel: the panel looks fine, but the
+settings you change are written to a file the old worker never reads, so
+premium silently never fires.
+
+So after any `git pull`, just run:
+
+```powershell
+.\install.ps1
+```
+
+It's safe to re-run any time. The control panel also checks this for you and
+shows a warning banner when your installed hooks don't match the repo.
+
 ---
 
 ## Daily use
@@ -234,6 +252,8 @@ History** → filter to **Quarantine** → find the `powershell.exe` /
 **I hear nothing.**
 - Is voice mode on? Run `.\voice-on.ps1`.
 - Did you restart Claude Code after installing? The hook loads at startup.
+- Did you `git pull` without re-running `.\install.ps1`? See the warning above —
+  this is the most common cause of "the panel does nothing".
 - Test your speakers + Windows voice directly:
   ```powershell
   Add-Type -AssemblyName System.Speech
@@ -241,6 +261,17 @@ History** → filter to **Quarantine** → find the `powershell.exe` /
   ```
 
 **It cuts off partway.** That's almost always Norton — see the section above.
+
+**I toggled premium on but still hear the robotic Windows voice.**
+- Most likely your installed hooks are stale — re-run `.\install.ps1` and
+  restart Claude Code. The panel shows a warning banner when this is the cause.
+- Premium only fires when a key **and** a voice ID are both set. Picking a voice
+  in the panel is a separate step from saving the key.
+
+**The panel says my key works but shows no plan or credits.** Your key is
+scope-restricted and lacks **User: Read**. That only hides the billing view —
+voices and speech still work normally. Enable that scope on the key in
+ElevenLabs (or create an unrestricted key) if you want the credits meter.
 
 **It reads too fast/slow.** Open `hooks/speak-worker.ps1` and change
 `$s.Rate = 1` (range is -10 slowest to 10 fastest, 0 is normal), then re-run

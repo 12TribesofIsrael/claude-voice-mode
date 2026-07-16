@@ -70,6 +70,11 @@
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);
     border:1px solid var(--line);padding:11px 18px;border-radius:12px;opacity:0;transition:.25s;pointer-events:none}
   .toast.show{opacity:1;bottom:30px}
+  .banner{display:none;background:rgba(255,180,84,.1);border:1px solid rgba(255,180,84,.45);
+    border-radius:12px;padding:14px 16px;margin-bottom:18px;font-size:13.5px;line-height:1.55}
+  .banner b{color:var(--warn)}
+  .banner code{background:#0d1119;border:1px solid var(--line);border-radius:6px;padding:1px 6px;
+    font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
   .statusbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
   .chip{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);
     padding:9px 14px;border-radius:12px;font-size:13px}
@@ -89,6 +94,8 @@
       <div class="sub">Control panel · free Windows voice ⇄ premium ElevenLabs</div>
     </div>
   </header>
+
+  <div class="banner" id="staleWarn"></div>
 
   <div class="statusbar">
     <div class="chip"><span id="dotEnabled" class="dot"></span><span id="txtEnabled">Voice: —</span></div>
@@ -205,7 +212,18 @@ async function loadState(){
   setDot('dotKey',data.hasKey?'green':'red');
   document.getElementById('txtKey').textContent='Key: '+(data.hasKey?data.keyMasked:'not set');
   document.getElementById('keyStatus').textContent=data.hasKey?('Saved key '+data.keyMasked):'No key saved yet.';
+  renderStale(data.staleHooks||[]);
   if(data.hasKey){loadCredits();}
+}
+
+function renderStale(list){
+  const el=document.getElementById('staleWarn');
+  if(!list.length){el.style.display='none';return;}
+  el.style.display='block';
+  el.innerHTML='<b>⚠ Your installed hooks are out of date.</b><br>'+
+    'The scripts that actually speak live outside this repo, so <code>git pull</code> does not update them — '+
+    'settings you change here will not take effect until you re-install. Out of date: <code>'+
+    list.join('</code>, <code>')+'</code>.<br>Run <code>.\\install.ps1</code> in the project folder, then restart Claude Code.';
 }
 
 document.getElementById('swEnabled').addEventListener('change',async e=>{

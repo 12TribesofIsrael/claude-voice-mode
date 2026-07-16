@@ -25,10 +25,13 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_HOOKS = os.path.join(os.path.dirname(HERE), "hooks")
 HOOKS_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
 CONFIG_PATH = os.path.join(HOOKS_DIR, "voice-config.json")
 FLAG_PATH = os.path.join(tempfile.gettempdir(), "claude-voice-enabled")
 WORKER = os.path.join(HOOKS_DIR, "speak-worker.ps1")
+
+HOOK_FILES = ("speak-response.ps1", "speak-worker.ps1", "voice-guard.ps1")
 
 EL_BASE = "https://api.elevenlabs.io"
 
@@ -61,6 +64,32 @@ def save_config(cfg):
     os.makedirs(HOOKS_DIR, exist_ok=True)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
+
+
+def stale_hooks():
+    """Hook scripts whose installed copy differs from this checkout.
+
+    The hooks run from ~/.claude/hooks, outside the repo, so `git pull` alone
+    leaves them behind. A stale worker ignores voice-config.json entirely — the
+    panel then writes settings nothing reads, and premium silently never fires.
+    Returns [] when not running from a checkout (nothing to compare against).
+    """
+    out = []
+    for name in HOOK_FILES:
+        try:
+            with open(os.path.join(REPO_HOOKS, name), "rb") as f:
+                want = f.read()
+        except OSError:
+            continue
+        try:
+            with open(os.path.join(HOOKS_DIR, name), "rb") as f:
+                have = f.read()
+        except OSError:
+            out.append(name)
+            continue
+        if want != have:
+            out.append(name)
+    return out
 
 
 def voice_enabled():
@@ -177,6 +206,7 @@ class Handler(BaseHTTPRequestHandler):
             safe["keyMasked"] = _mask(cfg.get("apiKey", ""))
             del safe["apiKey"]
             safe["enabled"] = voice_enabled()
+            safe["staleHooks"] = stale_hooks()
             return self._send(200, safe)
 
         if self.path == "/api/voices":
