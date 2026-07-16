@@ -222,13 +222,28 @@ async function saveKey(){
   if(!key){toast('Paste a key first');return;}
   document.getElementById('keyStatus').textContent='Verifying…';
   const {data}=await api('/api/key','POST',{key});
-  if(data.valid){toast('Key verified ✓');document.getElementById('apiKey').value='';loadState();loadVoices();}
-  else{document.getElementById('keyStatus').textContent='Key saved, but verification failed: '+JSON.stringify(data.subscription);toast('Key saved (unverified)');loadState();}
+  if(data.valid){
+    document.getElementById('apiKey').value='';
+    toast('Key verified ✓ — '+data.voices+' voices');
+    if(data.note==='no_user_scope'){
+      document.getElementById('keyStatus').textContent=
+        'Key works for voices and speech, but has no “User: Read” permission, so plan and credits stay hidden. Enable that scope on the key in ElevenLabs to see usage.';
+    }
+    loadState();loadVoices();
+  }
+  else{document.getElementById('keyStatus').textContent='Key saved, but it could not read your voices: '+JSON.stringify(data.subscription);toast('Key saved (unverified)');loadState();}
 }
 
 async function loadCredits(){
   const {ok,data}=await api('/api/credits');
-  if(!ok){document.getElementById('tier').textContent='—';return;}
+  if(!ok){
+    document.getElementById('tier').textContent='—';
+    document.getElementById('credRemain').textContent = data.error==='no_user_scope'
+      ? 'Hidden: this key has no “User: Read” permission. Voices and speech still work — enable that scope in ElevenLabs to see credits.'
+      : 'Could not load credits.';
+    return;
+  }
+  document.getElementById('credRemain').textContent='';
   document.getElementById('tier').textContent=(data.tier||'—');
   const used=data.used||0,limit=data.limit||0;
   const pct=limit?Math.min(100,Math.round(used/limit*100)):0;

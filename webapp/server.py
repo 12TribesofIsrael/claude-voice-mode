@@ -197,7 +197,10 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 return self._send(200, el_subscription(cfg["apiKey"]))
             except urllib.error.HTTPError as e:
-                return self._send(e.code, {"error": "elevenlabs", "detail": e.read().decode("utf-8", "ignore")})
+                # 401 here usually means the key works but lacks "User: Read" —
+                # voices and speech are unaffected, only the billing view is.
+                err = "no_user_scope" if e.code == 401 else "elevenlabs"
+                return self._send(e.code, {"error": err, "detail": e.read().decode("utf-8", "ignore")})
             except Exception as e:  # noqa
                 return self._send(502, {"error": str(e)})
 
@@ -213,14 +216,30 @@ class Handler(BaseHTTPRequestHandler):
             cfg["apiKey"] = key
             save_config(cfg)
             ok = False
+            voice_count = 0
+            note = ""
             info = {}
             if key:
+                # Judge the key by what this app needs it to do — read voices and
+                # speak. Billing access is a separate scope a working key may lack.
                 try:
-                    info = el_subscription(key)
+                    voice_count = len(el_voices(key))
                     ok = True
+                except urllib.error.HTTPError as e:
+                    info = {"error": "HTTP %d" % e.code}
                 except Exception as e:  # noqa
                     info = {"error": str(e)}
-            return self._send(200, {"saved": True, "valid": ok, "subscription": info})
+                if ok:
+                    try:
+                        info = el_subscription(key)
+                    except urllib.error.HTTPError as e:
+                        note = "no_user_scope" if e.code == 401 else "no_billing"
+                    except Exception:  # noqa
+                        note = "no_billing"
+            return self._send(
+                200,
+                {"saved": True, "valid": ok, "voices": voice_count, "note": note, "subscription": info},
+            )
 
         if self.path == "/api/premium":
             cfg = load_config()
@@ -265,13 +284,25 @@ def _mask(key):
     return key[:4] + "…" + key[-4:]
 
 
+class PanelServer(ThreadingHTTPServer):
+    # Without this, Windows lets a second launch bind the same port and steal
+    # connections from the first — two panels, one port, confusing results.
+    # Refusing to reuse makes a duplicate launch fail loudly instead.
+    allow_reuse_address = False
+
+
 def main():
     port = int(os.environ.get("VOICE_PANEL_PORT", "8770"))
     # make sure a config exists so the worker/panel agree on defaults
     if not os.path.exists(CONFIG_PATH):
         save_config(dict(DEFAULT_CONFIG))
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     url = f"http://127.0.0.1:{port}/"
+    try:
+        srv = PanelServer(("127.0.0.1", port), Handler)
+    except OSError:
+        print(f"A Claude Voice Mode panel is already running at {url}")
+        print("Open that address in your browser, or close the other panel first.")
+        return
     print(f"Claude Voice Mode panel running at {url}")
     print("Press Ctrl+C to stop.")
     try:
