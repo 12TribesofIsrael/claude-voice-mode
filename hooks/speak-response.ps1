@@ -52,6 +52,34 @@ $text = [regex]::Replace($text, '(?<=\s|^)[~./][^\s]*/[^\s]+', ' ')   # unix-ish
 $text = [regex]::Replace($text, '(?m)^\s{0,3}#{1,6}\s*', '')          # headers
 $text = [regex]::Replace($text, '(?m)^\s*[-*+]\s+', '')               # bullets
 $text = [regex]::Replace($text, '[*_>#|`~]', ' ')                     # stray md punctuation
+
+# Typographic punctuation -> plain ASCII. The Windows System.Speech (SAPI) voice
+# verbalizes these instead of pausing on them, which comes out as garbled noise
+# mid-sentence. Built from code points on purpose: PS 5.1 misreads literal
+# non-ASCII in a .ps1 unless the file keeps a BOM, and that's too fragile to rely
+# on. Dashes become commas so the clause break still gets its pause.
+$emDash    = [char]0x2014; $enDash    = [char]0x2013; $horizBar = [char]0x2015
+$lsquo     = [char]0x2018; $rsquo     = [char]0x2019
+$ldquo     = [char]0x201C; $rdquo     = [char]0x201D
+$ellipsis  = [char]0x2026; $bullet    = [char]0x2022; $nbsp     = [char]0x00A0
+$minusSign = [char]0x2212; $prime     = [char]0x2032
+
+# A dash tight between two word chars is joining them (fifty-one, 2013-2014), so
+# it becomes a hyphen. Every other dash is a clause break and becomes a comma, so
+# the pause survives. Order matters: match the tight case before the general one.
+$text = $text -replace "(?<=\w)[$emDash$enDash$horizBar](?=\w)", '-'
+$text = $text -replace "\s*[$emDash$enDash$horizBar]\s*", ', '   # clause break -> comma + pause
+$text = $text -replace "[$lsquo$rsquo$prime]", "'"               # curly single -> straight
+$text = $text -replace "[$ldquo$rdquo]", '"'                     # curly double -> straight
+$text = $text -replace "$ellipsis", '. '                         # ellipsis -> sentence stop
+$text = $text -replace "[$bullet]", ' '                          # bullet glyph -> space
+$text = $text -replace "[$nbsp]", ' '                            # nbsp -> real space
+$text = $text -replace "$minusSign", '-'                         # minus sign -> hyphen
+
+$text = [regex]::Replace($text, ' *, *(?=,)', '')                     # collapse ", ,"
+$text = [regex]::Replace($text, '(?<=[.!?]) *,', '')                  # drop ", " after a stop
+$text = [regex]::Replace($text, '^\s*,\s*', '')                       # dash-led text -> no lead comma
+$text = [regex]::Replace($text, '\s*,\s*$', '')                       # dash-tailed text -> no end comma
 $text = [regex]::Replace($text, '\s+', ' ').Trim()                    # collapse whitespace
 if ([string]::IsNullOrWhiteSpace($text)) { exit 0 }
 
