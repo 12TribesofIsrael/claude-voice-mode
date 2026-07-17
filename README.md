@@ -107,6 +107,17 @@ When it's ON, just talk to Claude like normal. Every time it finishes a
 reply, you'll hear it. When it's OFF, nothing is spoken and Claude behaves
 exactly as it did before.
 
+### Hear the last answer again — "repeat that"
+
+Missed something or want it read back? Just say **"repeat that"** (or "say that
+again", "read that back", "one more time"). Claude prints its previous answer
+again word-for-word, and the voice hook speaks it right back to you — nothing is
+re-generated, it's a literal replay of what you just heard.
+
+This is a small **skill** (`skills/repeat-that/`) that the installer copies into
+`%USERPROFILE%\.claude\skills`. It ships with voice mode, so after you run
+`.\install.ps1` it just works. Restart Claude Code once so it's picked up.
+
 ### Works in every repo and every window
 
 You install once. The switch is machine-wide, so it applies to **every repo

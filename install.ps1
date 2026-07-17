@@ -19,6 +19,19 @@ foreach ($f in 'speak-response.ps1','speak-worker.ps1','voice-guard.ps1') {
     Write-Host "  copied $f" -ForegroundColor Cyan
 }
 
+# 1b. Copy the bundled skills into %USERPROFILE%\.claude\skills so Claude Code
+#     picks them up (e.g. "repeat that" to hear the last answer again). Each skill
+#     is a folder with a SKILL.md; copy the whole folder so any extra files ride along.
+$srcSkills = Join-Path $PSScriptRoot 'skills'
+if (Test-Path $srcSkills) {
+    $skillsDir = Join-Path $claudeDir 'skills'
+    New-Item -ItemType Directory -Force -Path $skillsDir | Out-Null
+    foreach ($skill in Get-ChildItem -Path $srcSkills -Directory) {
+        Copy-Item $skill.FullName (Join-Path $skillsDir $skill.Name) -Recurse -Force
+        Write-Host "  copied skill $($skill.Name)" -ForegroundColor Cyan
+    }
+}
+
 # 2. Load or create settings.json.
 if (Test-Path $settings) {
     Copy-Item $settings "$settings.bak" -Force
