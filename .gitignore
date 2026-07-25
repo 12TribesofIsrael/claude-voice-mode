@@ -7,3 +7,7 @@ claude-voice-*.txt
 voice-config.json
 webapp/__pycache__/
 __pycache__/
+
+# Personal reading material — keep PDFs and reading progress out of the public repo
+documents/*.pdf
+documents/.read-progress.json
