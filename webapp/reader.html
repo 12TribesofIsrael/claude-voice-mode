@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Document Reader — Claude Voice Mode</title>
+<style>
+  :root{
+    --bg:#0b0d12; --panel:#141821; --panel2:#1b2130; --line:#232a3a;
+    --text:#e8ecf4; --muted:#8b94a7; --accent:#7c5cff; --accent2:#28d3a7;
+    --danger:#ff5c7c; --warn:#ffb454; --radius:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 700px at 80% -10%,#1a1f2e 0,transparent 60%),var(--bg);
+    color:var(--text);font:15px/1.5 'Segoe UI',system-ui,-apple-system,sans-serif;min-height:100vh;
+    padding-bottom:150px}
+  .wrap{max-width:1040px;margin:0 auto;padding:28px 22px 40px}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+  .logo{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:22px;
+    background:linear-gradient(135deg,#1aa87f,var(--accent2));box-shadow:0 6px 24px rgba(40,211,167,.35)}
+  h1{font-size:22px;margin:0;font-weight:650;letter-spacing:.2px}
+  .sub{color:var(--muted);font-size:13px;margin-top:2px}
+  header .spacer{flex:1}
+  .card{background:linear-gradient(180deg,var(--panel),#10141d);border:1px solid var(--line);
+    border-radius:var(--radius);padding:20px;margin-bottom:18px}
+  .card h2{margin:0 0 4px;font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .card p.hint{color:var(--muted);font-size:12.5px;margin:0 0 14px}
+  .btn{border-radius:11px;padding:11px 16px;font-weight:600;font-size:14px;cursor:pointer;
+    background:var(--panel2);color:var(--text);border:1px solid var(--line);transition:.15s}
+  .btn:hover{border-color:#39435c}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.primary{background:linear-gradient(135deg,var(--accent),#4f8bff);border:0;color:#fff}
+  .btn.sm{padding:7px 11px;font-size:12.5px;border-radius:9px}
+  select,input[type=text]{width:100%;background:#0d1119;border:1px solid var(--line);
+    color:var(--text);border-radius:10px;padding:10px 12px;font:inherit;outline:none}
+  select:focus{border-color:var(--accent)}
+  label.lab{display:block;font-size:12px;color:var(--muted);margin:0 0 6px;text-transform:uppercase;letter-spacing:.5px}
+  .muted{color:var(--muted)}
+  a{color:#8fb2ff}
+
+  /* drop zone */
+  .drop{border:1.5px dashed #333c52;border-radius:14px;padding:28px;text-align:center;
+    cursor:pointer;transition:.15s;background:#0d1119}
+  .drop:hover,.drop.over{border-color:var(--accent);background:#12142a}
+  .drop b{display:block;font-size:15px;margin-bottom:4px}
+
+  /* library */
+  .lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+  .doc{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--panel2);
+    cursor:pointer;transition:.15s;position:relative}
+  .doc:hover{border-color:#39435c}
+  .doc .dt{font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .doc .dm{font-size:11.5px;color:var(--muted);margin-top:4px}
+  .doc .del{position:absolute;top:8px;right:8px;opacity:0;border:0;background:transparent;color:var(--muted);
+    cursor:pointer;font-size:14px;padding:2px 5px;border-radius:6px}
+  .doc:hover .del{opacity:1}
+  .doc .del:hover{color:var(--danger);background:#0d1119}
+
+  /* engine picker */
+  .engines{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .eng{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:11px;
+    padding:9px 14px;cursor:pointer;font-size:13px;font-weight:600;transition:.15s}
+  .eng:hover{border-color:#39435c}
+  .eng.sel{border-color:var(--accent);background:#1a1836;box-shadow:0 0 0 1px var(--accent) inset}
+  .eng.na{opacity:.4;cursor:not-allowed}
+  .eng small{display:block;font-weight:400;font-size:11px;color:var(--muted);margin-top:2px}
+
+  /* transcript */
+  .transcript{max-height:none}
+  .chunk{padding:9px 14px;border-radius:10px;margin-bottom:5px;cursor:pointer;transition:.12s;
+    border:1px solid transparent;line-height:1.62}
+  .chunk:hover{background:var(--panel2)}
+  .chunk.cur{background:#1a1836;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .chunk.done{color:var(--muted)}
+  .chunk.h{font-weight:700;font-size:17px;margin-top:16px}
+  .chunk.h2{font-weight:650;font-size:15.5px;margin-top:12px}
+  .chunk.note{color:#5d6779;font-size:12.5px;font-style:italic}
+  .chunk .cached{float:right;font-size:10px;color:var(--accent2);opacity:.6}
+
+  /* player bar */
+  .player{position:fixed;left:0;right:0;bottom:0;background:rgba(16,20,29,.97);
+    border-top:1px solid var(--line);backdrop-filter:blur(10px);padding:12px 22px 14px;z-index:20}
+  .pinner{max-width:1040px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .pbtn{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:50%;
+    width:42px;height:42px;cursor:pointer;font-size:15px;display:grid;place-items:center;transition:.15s}
+  .pbtn:hover{border-color:var(--accent)}
+  .pbtn:disabled{opacity:.35;cursor:not-allowed}
+  .pbtn.big{width:52px;height:52px;font-size:19px;background:linear-gradient(135deg,var(--accent),#4f8bff);border:0;color:#fff}
+  .ptitle{font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px}
+  .pmeta{font-size:11.5px;color:var(--muted)}
+  .bar{flex:1;min-width:160px}
+  .meter{height:8px;border-radius:999px;background:#0d1119;border:1px solid var(--line);overflow:hidden;cursor:pointer}
+  .meter>i{display:block;height:100%;background:linear-gradient(90deg,var(--accent2),#4f8bff);width:0}
+  .speed{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .speed select{width:auto;padding:6px 8px;font-size:12.5px}
+
+  .toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:var(--panel2);
+    border:1px solid var(--line);padding:11px 18px;border-radius:12px;opacity:0;transition:.25s;
+    pointer-events:none;z-index:30;max-width:80vw;text-align:center}
+  .toast.show{opacity:1;bottom:120px}
+  .toast.bad{border-color:var(--danger);color:#ffc2ce}
+  .banner{display:none;background:rgba(255,180,84,.1);border:1px solid rgba(255,180,84,.45);
+    border-radius:12px;padding:13px 16px;margin-bottom:18px;font-size:13.5px;line-height:1.55}
+  .banner b{color:var(--warn)}
+  .hide{display:none !important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">📖</div>
+    <div>
+      <h1>Document Reader</h1>
+      <div class="sub">Turn a Markdown, text or PDF file into something you can listen to</div>
+    </div>
+    <div class="spacer"></div>
+    <a class="btn sm" href="/">⚙ Voice control panel</a>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <!-- ------------------------------------------------ open a document -->
+  <div class="card" id="openCard">
+    <h2>📂 Open a document</h2>
+    <p class="hint" id="openHint">Markdown, plain text or PDF. Everything stays on this machine.</p>
+    <div class="drop" id="drop">
+      <b>Drop a file here, or click to choose</b>
+      <span class="muted">.md · .markdown · .txt · .pdf</span>
+    </div>
+    <input type="file" id="file" class="hide" accept=".md,.markdown,.mdown,.txt,.text,.pdf" />
+
+    <div id="libWrap" class="hide" style="margin-top:18px">
+      <label class="lab">Recently opened</label>
+      <div class="lib" id="lib"></div>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------ voice -->
+  <div class="card">
+    <h2>🎙️ Voice</h2>
+    <p class="hint">
+      Separate from the voice that reads Claude's replies. Changing it here never
+      touches Voice Mode &mdash; currently set to <b id="vmEngine">—</b>.
+    </p>
+    <div class="engines" id="engines"></div>
+    <label class="lab" id="voiceLabel">Voice</label>
+    <select id="voice"></select>
+    <div class="pmeta" id="estimate" style="margin-top:10px"></div>
+  </div>
+
+  <!-- ------------------------------------------------ the document -->
+  <div class="card hide" id="docCard">
+    <h2 id="docTitle">Document</h2>
+    <p class="hint" id="docMeta"></p>
+    <div class="transcript" id="transcript"></div>
+  </div>
+</div>
+
+<!-- ------------------------------------------------ player -->
+<div class="player hide" id="player">
+  <div class="pinner">
+    <button class="pbtn" id="bPrev" title="Previous (left arrow)">⏮</button>
+    <button class="pbtn big" id="bPlay" title="Play / pause (space)">▶</button>
+    <button class="pbtn" id="bNext" title="Next (right arrow)">⏭</button>
+    <div>
+      <div class="ptitle" id="pTitle">—</div>
+      <div class="pmeta" id="pMeta">—</div>
+    </div>
+    <div class="bar">
+      <div class="meter" id="meter" title="Click to jump"><i id="meterFill"></i></div>
+    </div>
+    <div class="speed">
+      <span>Speed</span>
+      <select id="rate">
+        <option value="0.75">0.75x</option>
+        <option value="1" selected>1x</option>
+        <option value="1.25">1.25x</option>
+        <option value="1.5">1.5x</option>
+        <option value="1.75">1.75x</option>
+        <option value="2">2x</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ---------------------------------------------------------------- helpers
+function $(id){return document.getElementById(id)}
+let toastTimer=null;
+function toast(msg,bad){
+  const t=$('toast');t.textContent=msg;t.className='toast show'+(bad?' bad':'');
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.className='toast'+(bad?' bad':''),bad?5200:2600);
+}
+async function api(path,method,body){
+  const o={method:method||'GET',headers:{'Content-Type':'application/json'}};
+  if(body)o.body=JSON.stringify(body);
+  const r=await fetch(path,o);let d={};try{d=await r.json()}catch(e){}
+  return {ok:r.ok,data:d};
+}
+function mmss(s){s=Math.max(0,Math.round(s));const m=Math.floor(s/60);
+  return m>=60?Math.floor(m/60)+'h '+(m%60)+'m':(m+'m '+String(s%60).padStart(2,'0')+'s');}
+function bytes(n){return n>1048576?(n/1048576).toFixed(1)+' MB':Math.round(n/1024)+' KB';}
+
+const ENGINE_LABEL={piper:'Piper',neural:'Microsoft neural',elevenlabs:'ElevenLabs',windows:'Windows'};
+const ENGINE_NOTE={piper:'offline, free',neural:'online, free',elevenlabs:'best, billed',windows:'offline, robotic'};
+
+// ---------------------------------------------------------------- state
+let STATE=null;      // reader settings + library
+let VOICES={};       // per-engine voice lists
+let DOC=null;        // the loaded document
+let idx=0;           // current chunk
+let playing=false;
+let audio=new Audio();
+let prefetched={};   // chunk index -> object URL, one step ahead
+
+// ---------------------------------------------------------------- boot
+async function boot(){
+  const {ok,data}=await api('/api/reader/state');
+  if(!ok){toast('Could not reach the server',true);return}
+  STATE=data;
+  $('vmEngine').textContent=ENGINE_LABEL[data.voiceModeEngine]||data.voiceModeEngine;
+  audio.playbackRate=parseFloat(data.settings.readerRate)||1;
+  $('rate').value=String(audio.playbackRate);
+  if(!data.pdfSupported){
+    $('openHint').innerHTML='Markdown and plain text. <b>PDF needs pdftotext</b>, which ships with Git for Windows.';
+  }
+  renderLibrary();
+  const v=await api('/api/reader/voices');
+  if(v.ok)VOICES=v.data;
+  renderEngines();
+}
+
+// ---------------------------------------------------------------- library
+function renderLibrary(){
+  const items=STATE.library||[];
+  $('libWrap').className=items.length?'':'hide';
+  const el=$('lib');el.innerHTML='';
+  items.forEach(it=>{
+    const d=document.createElement('div');d.className='doc';
+    const pos=it.position||0,pct=it.chunks?Math.round(pos/it.chunks*100):0;
+    d.innerHTML='<div class="dt"></div><div class="dm"></div><button class="del" title="Remove">✕</button>';
+    d.querySelector('.dt').textContent=it.title||it.filename;
+    d.querySelector('.dm').textContent=pos>0&&pos<it.chunks
+      ? pct+'% listened · '+it.chunks+' parts'
+      : it.chunks+' parts · '+Math.round(it.chars/1000)+'k chars';
+    d.onclick=()=>openDoc(it.id);
+    d.querySelector('.del').onclick=async e=>{
+      e.stopPropagation();
+      await api('/api/reader/delete','POST',{id:it.id});
+      const s=await api('/api/reader/state');if(s.ok){STATE=s.data;renderLibrary();}
+      if(DOC&&DOC.id===it.id){DOC=null;$('docCard').className='card hide';$('player').className='player hide';stop();}
+    };
+    el.appendChild(d);
+  });
+}
+
+// ---------------------------------------------------------------- engines + voices
+function engineAvailable(e){
+  if(e==='piper')return STATE.piperInstalled;
+  if(e==='elevenlabs')return STATE.hasElevenKey;
+  return true;
+}
+function renderEngines(){
+  const el=$('engines');el.innerHTML='';
+  ['piper','neural','elevenlabs','windows'].forEach(e=>{
+    const b=document.createElement('button');
+    const ok=engineAvailable(e);
+    b.className='eng'+(STATE.settings.readerEngine===e?' sel':'')+(ok?'':' na');
+    b.innerHTML='<span></span><small></small>';
+    b.querySelector('span').textContent=ENGINE_LABEL[e];
+    b.querySelector('small').textContent=ok?ENGINE_NOTE[e]
+      :(e==='piper'?'no model installed':'no API key saved');
+    if(ok)b.onclick=()=>setEngine(e);
+    el.appendChild(b);
+  });
+  renderVoiceList();
+}
+function renderVoiceList(){
+  const e=STATE.settings.readerEngine;
+  const sel=$('voice');sel.innerHTML='';
+  let list=[],cur='';
+  if(e==='neural'){
+    list=(VOICES.neural||[]).map(v=>({v:v.name,
+      t:v.name.replace(/^en-[A-Z]{2}-/,'').replace(/Neural$/,'')+(v.tags?' — '+v.tags:'')}));
+    cur=STATE.settings.readerNeuralVoice;
+  }else if(e==='piper'){
+    list=(VOICES.piper||[]).map(v=>({v:v.path,t:v.name}));
+    cur=STATE.settings.readerPiperModel;
+  }else if(e==='elevenlabs'){
+    list=(VOICES.elevenlabs||[]).map(v=>({v:v.voice_id,t:v.name+(v.category?' — '+v.category:'')}));
+    cur=STATE.settings.readerVoiceId;
+  }else{
+    list=(VOICES.windows||[]).map(v=>({v:v.name,t:v.name}));
+    cur=STATE.settings.readerWindowsVoice;
+  }
+  $('voiceLabel').textContent=list.length?(ENGINE_LABEL[e]+' voice — '+list.length+' available'):'Voice';
+  if(!list.length){
+    sel.innerHTML='<option>No voices available for this engine</option>';return;
+  }
+  list.forEach(o=>{
+    const op=document.createElement('option');op.value=o.v;op.textContent=o.t;
+    if(o.v===cur)op.selected=true;sel.appendChild(op);
+  });
+  if(!list.some(o=>o.v===cur))sel.selectedIndex=0;
+  saveVoice(sel.value,true);
+}
+async function setEngine(e){
+  STATE.settings.readerEngine=e;
+  await api('/api/reader/settings','POST',{readerEngine:e});
+  renderEngines();
+  showEstimate();
+  // The engine changed, so every prefetched clip is in the wrong voice.
+  dropPrefetch();
+}
+function voiceKeyFor(e){
+  return {neural:'readerNeuralVoice',piper:'readerPiperModel',
+          elevenlabs:'readerVoiceId',windows:'readerWindowsVoice'}[e];
+}
+async function saveVoice(value,quiet){
+  const e=STATE.settings.readerEngine,key=voiceKeyFor(e);
+  if(STATE.settings[key]===value)return;
+  STATE.settings[key]=value;
+  const body={};body[key]=value;
+  const r=await api('/api/reader/settings','POST',body);
+  if(r.ok&&r.data.voiceModeEngine)$('vmEngine').textContent=
+    ENGINE_LABEL[r.data.voiceModeEngine]||r.data.voiceModeEngine;
+  dropPrefetch();
+  if(!quiet)toast('Voice set');
+}
+$('voice').onchange=e=>saveVoice(e.target.value);
+
+function showEstimate(){
+  if(!DOC){$('estimate').textContent='';return}
+  const e=STATE.settings.readerEngine,est=DOC.estimates[e];
+  if(!est){$('estimate').textContent='';return}
+  let s='About '+mmss(est.audioSeconds)+' to listen to. Roughly '+mmss(est.generateSeconds)
+       +' of generating in total, but playback starts after the first line.';
+  if(e==='elevenlabs')s+=' Costs about '+est.chars.toLocaleString()+' ElevenLabs characters.';
+  $('estimate').textContent=s;
+}
+
+// ---------------------------------------------------------------- open
+$('drop').onclick=()=>$('file').click();
+$('file').onchange=e=>{if(e.target.files[0])upload(e.target.files[0])};
+['dragenter','dragover'].forEach(ev=>$('drop').addEventListener(ev,e=>{
+  e.preventDefault();$('drop').classList.add('over')}));
+['dragleave','drop'].forEach(ev=>$('drop').addEventListener(ev,e=>{
+  e.preventDefault();$('drop').classList.remove('over')}));
+$('drop').addEventListener('drop',e=>{
+  const f=e.dataTransfer.files[0];if(f)upload(f);
+});
+
+async function upload(file){
+  toast('Reading '+file.name+'…');
+  let r;
+  try{
+    r=await fetch('/api/reader/upload',{method:'POST',
+      headers:{'X-Filename':encodeURIComponent(file.name)},body:file});
+  }catch(err){toast('Upload failed: '+err.message,true);return}
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok){toast(d.detail||d.error||'Could not read that file',true);return}
+  const s=await api('/api/reader/state');if(s.ok){STATE=s.data;renderLibrary();}
+  openDoc(d.id);
+}
+
+async function openDoc(id){
+  stop();
+  const {ok,data}=await api('/api/reader/doc?id='+encodeURIComponent(id));
+  if(!ok){toast('Could not open that document',true);return}
+  DOC=data;idx=data.position||0;
+  if(idx>=DOC.chunks.length)idx=0;
+  $('docCard').className='card';
+  $('player').className='player';
+  $('docTitle').textContent=DOC.title;
+  $('docMeta').textContent=DOC.filename+' · '+DOC.chunks.length+' parts · '
+    +DOC.chars.toLocaleString()+' characters';
+  $('pTitle').textContent=DOC.title;
+  renderTranscript();
+  showEstimate();
+  updateUI();
+  if(idx>0)toast('Resuming where you left off');
+}
+
+function renderTranscript(){
+  const el=$('transcript');el.innerHTML='';
+  DOC.chunks.forEach(c=>{
+    const d=document.createElement('div');
+    let cls='chunk';
+    if(c.kind==='heading')cls+=(c.level&&c.level>1)?' h2':' h';
+    if(c.kind==='code'||c.kind==='table')cls+=' note';
+    d.className=cls;d.id='c'+c.i;d.textContent=c.text;
+    d.onclick=()=>{jump(c.i);if(!playing)play();};
+    el.appendChild(d);
+  });
+}
+
+// ---------------------------------------------------------------- playback
+function chunkUrl(i){
+  const e=STATE.settings.readerEngine;
+  const v=STATE.settings[voiceKeyFor(e)]||'';
+  return '/api/reader/chunk?id='+encodeURIComponent(DOC.id)+'&i='+i
+        +'&engine='+encodeURIComponent(e)+'&voice='+encodeURIComponent(v);
+}
+function dropPrefetch(){
+  Object.values(prefetched).forEach(u=>URL.revokeObjectURL(u));
+  prefetched={};
+}
+async function fetchChunk(i){
+  if(!DOC||i<0||i>=DOC.chunks.length)return null;
+  if(prefetched[i])return prefetched[i];
+  const r=await fetch(chunkUrl(i));
+  if(!r.ok){
+    const d=await r.json().catch(()=>({}));
+    throw new Error(d.detail||d.error||('HTTP '+r.status));
+  }
+  const url=URL.createObjectURL(await r.blob());
+  prefetched[i]=url;
+  return url;
+}
+// Generating the next part while this one plays is the whole trick: only the
+// very first part is ever waited for.
+function prefetchNext(){
+  const n=idx+1;
+  if(n<DOC.chunks.length&&!prefetched[n])fetchChunk(n).catch(()=>{});
+}
+
+async function play(){
+  if(!DOC)return;
+  playing=true;updateUI();
+  let url;
+  try{
+    $('bPlay').textContent='…';
+    url=await fetchChunk(idx);
+  }catch(e){
+    playing=false;updateUI();toast('Could not generate audio — '+e.message,true);return;
+  }
+  if(!playing)return;               // user hit pause while it was generating
+  audio.src=url;
+  audio.playbackRate=parseFloat($('rate').value)||1;
+  try{await audio.play()}catch(e){playing=false;updateUI();return}
+  updateUI();
+  prefetchNext();
+}
+function pause(){playing=false;audio.pause();updateUI();}
+function stop(){playing=false;audio.pause();audio.removeAttribute('src');dropPrefetch();}
+
+audio.onended=()=>{
+  if(!playing)return;
+  if(idx+1>=DOC.chunks.length){playing=false;updateUI();toast('Finished the document');return}
+  idx++;saveProgress();play();
+};
+audio.onerror=()=>{if(playing){playing=false;updateUI();}};
+
+function jump(i){
+  if(!DOC)return;
+  idx=Math.max(0,Math.min(DOC.chunks.length-1,i));
+  saveProgress();
+  if(playing){audio.pause();play();}else updateUI();
+}
+$('bPlay').onclick=()=>playing?pause():play();
+$('bPrev').onclick=()=>jump(idx-1);
+$('bNext').onclick=()=>jump(idx+1);
+$('rate').onchange=e=>{
+  audio.playbackRate=parseFloat(e.target.value)||1;
+  STATE.settings.readerRate=audio.playbackRate;
+  api('/api/reader/settings','POST',{readerRate:audio.playbackRate});
+};
+$('meter').onclick=e=>{
+  if(!DOC)return;
+  const r=e.currentTarget.getBoundingClientRect();
+  jump(Math.floor((e.clientX-r.left)/r.width*DOC.chunks.length));
+};
+
+let saveTimer=null;
+function saveProgress(){
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>api('/api/reader/progress','POST',{id:DOC.id,i:idx}),400);
+}
+
+function updateUI(){
+  $('bPlay').textContent=playing?'⏸':'▶';
+  if(!DOC)return;
+  $('bPrev').disabled=idx<=0;
+  $('bNext').disabled=idx>=DOC.chunks.length-1;
+  $('pMeta').textContent='Part '+(idx+1)+' of '+DOC.chunks.length+' · '
+    +ENGINE_LABEL[STATE.settings.readerEngine];
+  $('meterFill').style.width=((idx+1)/DOC.chunks.length*100)+'%';
+  DOC.chunks.forEach(c=>{
+    const el=$('c'+c.i);if(!el)return;
+    el.classList.toggle('cur',c.i===idx);
+    el.classList.toggle('done',c.i<idx);
+  });
+  const cur=$('c'+idx);
+  if(cur)cur.scrollIntoView({block:'center',behavior:'smooth'});
+}
+
+// keyboard: the controls you actually reach for while listening
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='SELECT'||e.target.tagName==='INPUT')return;
+  if(e.code==='Space'){e.preventDefault();playing?pause():play();}
+  else if(e.code==='ArrowRight'){e.preventDefault();jump(idx+1);}
+  else if(e.code==='ArrowLeft'){e.preventDefault();jump(idx-1);}
+});
+
+boot();
+</script>
+</body>
+</html>

@@ -21,10 +21,17 @@ import subprocess
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+
+import docutil  # noqa: E402 - local module, needs HERE on the path first
+import library  # noqa: E402
+import synth  # noqa: E402
+
 REPO_HOOKS = os.path.join(os.path.dirname(HERE), "hooks")
 HOOKS_DIR = os.path.join(os.path.expanduser("~"), ".claude", "hooks")
 CONFIG_PATH = os.path.join(HOOKS_DIR, "voice-config.json")
@@ -32,6 +39,10 @@ FLAG_PATH = os.path.join(tempfile.gettempdir(), "claude-voice-enabled")
 WORKER = os.path.join(HOOKS_DIR, "speak-worker.ps1")
 
 HOOK_FILES = ("speak-response.ps1", "speak-worker.ps1", "voice-guard.ps1", "tts-server.py")
+
+# Largest document the reader will accept. A 25 MB PDF is already a multi-hour
+# listen; anything past that is a mistake, not a document.
+MAX_UPLOAD = 25 * 1024 * 1024
 
 EL_BASE = "https://api.elevenlabs.io"
 
@@ -52,7 +63,31 @@ DEFAULT_CONFIG = {
     "piper": False,
     "piperModel": "",
     "ttsPort": 8771,
+    # ---- Document reader --------------------------------------------------- #
+    # Deliberately separate keys from the ones above. voice-config.json is
+    # machine-wide, so if the reader shared "premium"/"neural"/"piper" then
+    # picking a voice to narrate a long document would silently change how
+    # Claude speaks to you for the rest of the day. These are read only by the
+    # /api/reader routes; engine_of()/apply_engine() still govern Voice Mode
+    # alone.
+    "readerEngine": "piper",
+    "readerNeuralVoice": "en-US-AndrewNeural",
+    "readerPiperModel": "",
+    "readerVoiceId": "",
+    "readerWindowsVoice": "",
+    "readerRate": 1.0,
 }
+
+# Reader settings, listed once so the settings route cannot drift from the
+# defaults above.
+READER_KEYS = (
+    "readerEngine",
+    "readerNeuralVoice",
+    "readerPiperModel",
+    "readerVoiceId",
+    "readerWindowsVoice",
+    "readerRate",
+)
 
 # Shown when edge-tts is not importable, so the panel still offers real choices
 # instead of an empty list. Kept short — these are the ones worth hearing.
@@ -279,11 +314,24 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return {}
 
+    def _page(self, name):
+        with open(os.path.join(HERE, name), "rb") as f:
+            return self._send(200, f.read(), "text/html; charset=utf-8")
+
     # ---- GET ------------------------------------------------------------- #
     def do_GET(self):
-        if self.path in ("/", "/index.html"):
-            with open(os.path.join(HERE, "index.html"), "rb") as f:
-                return self._send(200, f.read(), "text/html; charset=utf-8")
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        query = urllib.parse.parse_qs(parsed.query)
+
+        if path in ("/", "/index.html"):
+            return self._page("index.html")
+
+        if path in ("/reader", "/reader.html"):
+            return self._page("reader.html")
+
+        if path.startswith("/api/reader"):
+            return self._reader_get(path, query)
 
         if self.path == "/api/state":
             cfg = load_config()
@@ -332,6 +380,10 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- POST ------------------------------------------------------------ #
     def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path.startswith("/api/reader"):
+            return self._reader_post(parsed.path, urllib.parse.parse_qs(parsed.query))
+
         data = self._read_json()
 
         if self.path == "/api/key":
@@ -412,6 +464,199 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True})
 
         return self._send(404, {"error": "not_found"})
+
+    # ---- Document reader -------------------------------------------------- #
+    # Kept in its own pair of handlers rather than mixed into the routes above,
+    # because the reader is a second product sharing this process and the two
+    # should stay easy to tell apart.
+    def _reader_get(self, path, query):
+        cfg = load_config()
+
+        if path == "/api/reader/state":
+            return self._send(200, {
+                "settings": {k: cfg.get(k, DEFAULT_CONFIG.get(k)) for k in READER_KEYS},
+                "library": library.recent(),
+                "cacheBytes": library.cache_size(),
+                "hasElevenKey": bool(cfg.get("apiKey")),
+                "piperInstalled": bool(piper_voices(cfg)),
+                "pdfSupported": bool(docutil.find_pdftotext()),
+                "voiceModeEngine": engine_of(cfg),
+            })
+
+        if path == "/api/reader/voices":
+            out = {
+                "neural": neural_voices(),
+                "piper": piper_voices(cfg),
+                "windows": synth.windows_voices(),
+                "elevenlabs": [],
+            }
+            if cfg.get("apiKey"):
+                try:
+                    out["elevenlabs"] = el_voices(cfg["apiKey"])
+                except Exception:  # noqa: BLE001 - a missing list is not fatal
+                    pass
+            return self._send(200, out)
+
+        if path == "/api/reader/library":
+            return self._send(200, {"items": library.recent()})
+
+        if path == "/api/reader/doc":
+            doc = library.load_doc((query.get("id") or [""])[0])
+            if not doc:
+                return self._send(404, {"error": "unknown_document"})
+            entry = library.load_index().get(doc["id"], {})
+            doc = dict(doc)
+            doc["position"] = entry.get("position", 0)
+            doc["estimates"] = {
+                e: synth.estimate(doc["chars"], e) for e in synth.ENGINES
+            }
+            return self._send(200, doc)
+
+        if path == "/api/reader/chunk":
+            return self._reader_chunk(cfg, query)
+
+        return self._send(404, {"error": "not_found"})
+
+    def _reader_chunk(self, cfg, query):
+        doc_id = (query.get("id") or [""])[0]
+        try:
+            index = int((query.get("i") or ["-1"])[0])
+        except ValueError:
+            index = -1
+
+        doc = library.load_doc(doc_id)
+        if not doc:
+            return self._send(404, {"error": "unknown_document"})
+        if index < 0 or index >= len(doc["chunks"]):
+            return self._send(404, {"error": "no_such_chunk"})
+
+        engine = ((query.get("engine") or [""])[0] or cfg.get("readerEngine") or "piper").lower()
+        if engine not in synth.ENGINES:
+            return self._send(400, {"error": "unknown_engine"})
+        voice = (query.get("voice") or [""])[0] or reader_voice(cfg, engine)
+
+        _mime, ext = synth.MIME[engine]
+        hit = library.cached_audio(doc_id, index, engine, voice, ext)
+        if hit:
+            with open(hit, "rb") as f:
+                return self._send_audio(f.read(), _mime, cached=True)
+
+        text = doc["chunks"][index]["text"]
+        try:
+            audio, mime, ext = synth.synthesize(text, engine, voice, cfg)
+        except synth.SynthError as e:
+            # Deliberately not falling back to another engine. Forty minutes of
+            # a document read in a voice you did not choose is worse than an
+            # error you can act on.
+            return self._send(502, {"error": "synth_failed", "detail": str(e)})
+
+        library.store_audio(doc_id, index, engine, voice, ext, audio)
+        return self._send_audio(audio, mime, cached=False)
+
+    def _send_audio(self, data, mime, cached):
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "private, max-age=3600")
+        self.send_header("X-Cache", "hit" if cached else "miss")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _reader_post(self, path, query):
+        if path == "/api/reader/upload":
+            return self._reader_upload(query)
+
+        data = self._read_json()
+        cfg = load_config()
+
+        if path == "/api/reader/settings":
+            for k in READER_KEYS:
+                if k in data:
+                    cfg[k] = data[k]
+            if cfg.get("readerEngine") not in synth.ENGINES:
+                return self._send(400, {"error": "unknown_engine"})
+            save_config(cfg)
+            return self._send(200, {
+                "settings": {k: cfg.get(k) for k in READER_KEYS},
+                # Proof for the caller that Voice Mode was left alone.
+                "voiceModeEngine": engine_of(cfg),
+            })
+
+        if path == "/api/reader/progress":
+            ok = library.set_position(data.get("id", ""), data.get("i", 0))
+            return self._send(200 if ok else 404, {"ok": ok})
+
+        if path == "/api/reader/delete":
+            return self._send(200, {"ok": library.delete_doc(data.get("id", ""))})
+
+        if path == "/api/reader/clear-cache":
+            library.clear_audio(data.get("id"))
+            return self._send(200, {"ok": True, "cacheBytes": library.cache_size()})
+
+        return self._send(404, {"error": "not_found"})
+
+    def _reader_upload(self, query):
+        """Raw file body plus an X-Filename header.
+
+        Deliberately not multipart: the browser can post a File object directly
+        as the body, which saves parsing multipart in the standard library for
+        no benefit.
+        """
+        name = self.headers.get("X-Filename") or "document.md"
+        name = os.path.basename(urllib.parse.unquote(name))
+        ext = os.path.splitext(name)[1].lower()
+        if ext not in docutil.SUPPORTED:
+            return self._send(400, {
+                "error": "unsupported_type",
+                "detail": "Supported: " + ", ".join(docutil.SUPPORTED),
+            })
+
+        size = int(self.headers.get("Content-Length", 0) or 0)
+        if size <= 0:
+            return self._send(400, {"error": "empty_upload"})
+        if size > MAX_UPLOAD:
+            return self._send(413, {"error": "too_large"})
+
+        fd, tmp = tempfile.mkstemp(prefix="reader-upload-", suffix=ext)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(self.rfile.read(size))
+            doc = docutil.load_document(tmp, filename=name)
+        except Exception as e:  # noqa: BLE001 - surfaced in the page
+            return self._send(400, {"error": "extract_failed", "detail": str(e)})
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+        if not doc["chunks"]:
+            return self._send(400, {
+                "error": "nothing_to_read",
+                "detail": "No readable prose found in that file.",
+            })
+
+        entry = library.save_doc(doc)
+        return self._send(200, {"id": doc["id"], "entry": entry})
+
+
+def reader_voice(cfg, engine):
+    """The saved reader voice for an engine.
+
+    Piper falls back to any model on disk so a fresh install can play something
+    without making you visit settings first.
+    """
+    if engine == "neural":
+        return cfg.get("readerNeuralVoice") or DEFAULT_CONFIG["readerNeuralVoice"]
+    if engine == "elevenlabs":
+        return cfg.get("readerVoiceId") or cfg.get("voiceId") or ""
+    if engine == "windows":
+        return cfg.get("readerWindowsVoice") or cfg.get("windowsVoice") or ""
+    model = cfg.get("readerPiperModel") or cfg.get("piperModel") or ""
+    if not model or not os.path.isfile(model):
+        found = piper_voices(cfg)
+        model = found[0]["path"] if found else ""
+    return model
 
 
 def _mask(key):

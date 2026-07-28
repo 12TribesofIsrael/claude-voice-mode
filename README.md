@@ -7,6 +7,10 @@ no internet — it all runs on your own PC.
 Flip it on when you want to code hands-free and just *listen* to Claude's
 answers. Flip it off and it's silent again.
 
+It also ships a **[Document Reader](#document-reader--listen-to-your-own-docs-)** —
+drop in a Markdown, text or PDF file and it reads *that* aloud instead, with play,
+pause, seek and resume. Double-click `Document Reader.bat`.
+
 ---
 
 ## Quick start (copy-paste)
@@ -284,6 +288,55 @@ those per reply would be very noticeable. Instead `hooks/tts-server.py` runs as 
 small local server that keeps the model warm and answers over loopback. The
 worker starts it on first use, and it shuts itself down after 30 idle minutes.
 A warm sentence comes back in about half a second.
+
+---
+
+## Document Reader — listen to your own docs 📖
+
+Everything above is about hearing **Claude's replies**. The Document Reader is the
+other half: hand it a file *you* wrote and it reads that aloud instead, with a real
+player.
+
+**Double-click `Document Reader.bat`.** Drop in a `.md`, `.txt` or `.pdf` and press
+play.
+
+- **Play, pause, skip, seek.** Click any paragraph to jump straight there. Space
+  bar plays and pauses, arrow keys move a part at a time.
+- **Picks up where you left off.** Close the tab mid-document and it resumes at the
+  same paragraph next time, per document.
+- **Starts almost immediately.** The document is split into parts and only the
+  first one is ever waited for; the rest are generated while you listen. On this
+  machine the first words start in about **one second** on Piper, against roughly a
+  minute if the whole document were generated up front.
+- **Every voice the control panel offers** — all ~47 Microsoft neural voices, your
+  ElevenLabs voices, any Piper model on disk, and the Windows voices. It tells you
+  how long a document will take to listen to and to generate before you start, and
+  what it will cost in ElevenLabs characters if you pick that one.
+- **Generated audio is cached**, so replaying a document is instant and never bills
+  you twice for the same paragraph.
+
+### Its voice is separate from Claude's, on purpose
+
+`voice-config.json` is machine-wide. If the reader shared the same setting, then
+picking a voice to narrate a long document would silently change how Claude speaks
+to you for the rest of the day. So the reader keeps its own engine and voice, and
+the page shows you which engine Voice Mode is on so you can see they are
+independent.
+
+### What it does with Markdown
+
+Code blocks and tables are skipped with a short spoken note, so you know something
+was left out rather than losing it silently. Headings are read as headings with a
+pause. Links become their label, bare URLs are dropped, and typographic punctuation
+is converted so an em dash becomes a pause instead of the words "em dash". PDFs go
+through `pdftotext`, which ships inside Git for Windows.
+
+Documents, their audio, and your position are stored in `webapp/.reader/`, which is
+git-ignored — nothing you read ends up in a commit.
+
+> The older `scripts/read-document.ps1` still works and still reads PDFs in a
+> console with keyboard controls. The reader is the same idea with a real player,
+> Markdown support, and the natural voices.
 
 ---
 

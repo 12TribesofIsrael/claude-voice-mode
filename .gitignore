@@ -11,3 +11,8 @@ __pycache__/
 # Personal reading material — keep PDFs and reading progress out of the public repo
 documents/*.pdf
 documents/.read-progress.json
+
+# Document reader working store — the documents you open, the audio generated
+# from them, and how far through each one you are. Personal by definition, and
+# the audio cache runs to hundreds of megabytes.
+webapp/.reader/
