@@ -10,8 +10,21 @@ $ErrorActionPreference = 'SilentlyContinue'
 $flag = Join-Path $env:TEMP 'claude-voice-enabled'
 if (-not (Test-Path $flag)) { exit 0 }
 
-# 2. Read the hook JSON from stdin.
-$raw = [Console]::In.ReadToEnd()
+# 2. Read the hook JSON from stdin -- as UTF-8, explicitly.
+# [Console]::In decodes using the console's input encoding, which for a freshly
+# spawned hook process is the OEM codepage (437 on US Windows), not UTF-8. Every
+# non-ASCII character then arrives mangled: an em dash (E2 80 94) is decoded as
+# three separate characters starting with Greek capital gamma, and a neural voice
+# reads that gamma out loud. Opening the raw byte stream skips the console
+# encoding entirely, so the bytes are decoded as what they actually are.
+$raw = $null
+try {
+    $stdin  = [Console]::OpenStandardInput()
+    $reader = New-Object System.IO.StreamReader($stdin, (New-Object System.Text.UTF8Encoding($false)))
+    $raw    = $reader.ReadToEnd()
+    $reader.Dispose()
+} catch { $raw = $null }
+if ($null -eq $raw) { $raw = [Console]::In.ReadToEnd() }
 if ([string]::IsNullOrWhiteSpace($raw)) { exit 0 }
 
 try { $data = $raw | ConvertFrom-Json } catch { exit 0 }
@@ -41,6 +54,20 @@ if ([string]::IsNullOrWhiteSpace($text) -and $data.transcript_path) {
 }
 
 if ([string]::IsNullOrWhiteSpace($text)) { exit 0 }   # guards /clear-style empties
+
+# Belt and braces: repair text that some earlier layer already decoded as OEM.
+# Every UTF-8 punctuation character we care about starts E2 80, which lands as
+# gamma + C-cedilla under codepage 437 -- a signature that effectively never
+# occurs in real prose. Round-tripping those bytes back through UTF-8 restores
+# the original characters so the cleanup below can do its job. Characters are
+# built from code points because PS 5.1 misreads literal non-ASCII in a .ps1.
+$oemSig = [string]([char]0x0393) + [char]0x00C7
+if ($text.Contains($oemSig)) {
+    try {
+        $text = [System.Text.Encoding]::UTF8.GetString(
+            [System.Text.Encoding]::GetEncoding(437).GetBytes($text))
+    } catch { }
+}
 
 # 3. Strip markdown / code / URLs / file paths so only prose is spoken.
 $text = [regex]::Replace($text, '(?s)```.*?```', ' ')                 # fenced code blocks
