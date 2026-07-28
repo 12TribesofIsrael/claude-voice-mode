@@ -31,7 +31,7 @@ CONFIG_PATH = os.path.join(HOOKS_DIR, "voice-config.json")
 FLAG_PATH = os.path.join(tempfile.gettempdir(), "claude-voice-enabled")
 WORKER = os.path.join(HOOKS_DIR, "speak-worker.ps1")
 
-HOOK_FILES = ("speak-response.ps1", "speak-worker.ps1", "voice-guard.ps1")
+HOOK_FILES = ("speak-response.ps1", "speak-worker.ps1", "voice-guard.ps1", "tts-server.py")
 
 EL_BASE = "https://api.elevenlabs.io"
 
@@ -44,7 +44,91 @@ DEFAULT_CONFIG = {
     "stability": 0.5,
     "similarity": 0.75,
     "windowsVoice": "Zira",
+    # Microsoft neural voices (Andrew, Ava…) via the free read-aloud service.
+    # Natural and free, but online.
+    "neural": False,
+    "neuralVoice": "en-US-AndrewNeural",
+    # Piper — neural speech running offline on the CPU.
+    "piper": False,
+    "piperModel": "",
+    "ttsPort": 8771,
 }
+
+# Shown when edge-tts is not importable, so the panel still offers real choices
+# instead of an empty list. Kept short — these are the ones worth hearing.
+FALLBACK_NEURAL_VOICES = [
+    {"name": "en-US-AndrewNeural", "gender": "Male", "tags": "Warm, confident"},
+    {"name": "en-US-BrianNeural", "gender": "Male", "tags": "Casual, sincere"},
+    {"name": "en-US-ChristopherNeural", "gender": "Male", "tags": "Authoritative"},
+    {"name": "en-US-GuyNeural", "gender": "Male", "tags": "Passionate"},
+    {"name": "en-US-AvaNeural", "gender": "Female", "tags": "Expressive, caring"},
+    {"name": "en-US-EmmaNeural", "gender": "Female", "tags": "Cheerful, clear"},
+    {"name": "en-US-JennyNeural", "gender": "Female", "tags": "Friendly"},
+    {"name": "en-US-AriaNeural", "gender": "Female", "tags": "Confident"},
+]
+
+
+# --------------------------------------------------------------------------- #
+# engines
+# --------------------------------------------------------------------------- #
+# The worker tries engines in a fixed order and falls through on any failure:
+# ElevenLabs, then Microsoft neural, then Piper, then the Windows voice. The
+# panel exposes that as a single choice, so the booleans stay coherent — two
+# engines "on" at once would silently make the lower one unreachable.
+ENGINES = ("elevenlabs", "neural", "piper", "windows")
+
+
+def engine_of(cfg):
+    if cfg.get("premium"):
+        return "elevenlabs"
+    if cfg.get("neural"):
+        return "neural"
+    if cfg.get("piper"):
+        return "piper"
+    return "windows"
+
+
+def apply_engine(cfg, engine):
+    cfg["premium"] = engine == "elevenlabs"
+    cfg["neural"] = engine == "neural"
+    cfg["piper"] = engine == "piper"
+    return cfg
+
+
+def neural_voices():
+    """Every English neural voice the service offers, best effort."""
+    try:
+        import asyncio
+
+        import edge_tts
+
+        raw = asyncio.new_event_loop().run_until_complete(edge_tts.list_voices())
+        out = []
+        for v in raw:
+            name = v.get("ShortName", "")
+            if not name.startswith("en-"):
+                continue
+            tags = (v.get("VoiceTag") or {}).get("VoicePersonalities") or []
+            out.append(
+                {
+                    "name": name,
+                    "gender": v.get("Gender", ""),
+                    "tags": ", ".join(tags),
+                }
+            )
+        return sorted(out, key=lambda v: v["name"]) or FALLBACK_NEURAL_VOICES
+    except Exception:  # noqa: BLE001 — edge-tts is optional
+        return FALLBACK_NEURAL_VOICES
+
+
+def piper_voices(cfg):
+    """Voice models actually sitting on disk, so the panel never offers a lie."""
+    folder = cfg.get("piperDir") or os.path.join(HOOKS_DIR, "piper")
+    try:
+        names = sorted(f for f in os.listdir(folder) if f.endswith(".onnx"))
+    except OSError:
+        return []
+    return [{"name": os.path.splitext(n)[0], "path": os.path.join(folder, n)} for n in names]
 
 
 # --------------------------------------------------------------------------- #
@@ -53,7 +137,9 @@ DEFAULT_CONFIG = {
 def load_config():
     cfg = dict(DEFAULT_CONFIG)
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        # utf-8-sig, not utf-8: stock Windows tools write a byte order mark, and
+        # plain utf-8 would fail to parse and silently reset every setting.
+        with open(CONFIG_PATH, "r", encoding="utf-8-sig") as f:
             cfg.update(json.load(f))
     except (FileNotFoundError, json.JSONDecodeError):
         pass
@@ -207,7 +293,15 @@ class Handler(BaseHTTPRequestHandler):
             del safe["apiKey"]
             safe["enabled"] = voice_enabled()
             safe["staleHooks"] = stale_hooks()
+            safe["engine"] = engine_of(cfg)
+            safe["piperInstalled"] = bool(piper_voices(cfg))
             return self._send(200, safe)
+
+        if self.path == "/api/tts-voices":
+            cfg = load_config()
+            return self._send(
+                200, {"neural": neural_voices(), "piper": piper_voices(cfg)}
+            )
 
         if self.path == "/api/voices":
             cfg = load_config()
@@ -273,9 +367,19 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/api/premium":
             cfg = load_config()
-            cfg["premium"] = bool(data.get("on"))
+            # Kept for older panels: turning premium on must still turn the
+            # other engines off, or the choice would not be a choice.
+            apply_engine(cfg, "elevenlabs" if data.get("on") else "windows")
             save_config(cfg)
             return self._send(200, {"premium": cfg["premium"]})
+
+        if self.path == "/api/engine":
+            engine = (data.get("engine") or "").strip().lower()
+            if engine not in ENGINES:
+                return self._send(400, {"error": "unknown_engine"})
+            cfg = apply_engine(load_config(), engine)
+            save_config(cfg)
+            return self._send(200, {"engine": engine_of(cfg)})
 
         if self.path == "/api/enabled":
             set_voice_enabled(bool(data.get("on")))
@@ -295,6 +399,10 @@ class Handler(BaseHTTPRequestHandler):
                 cfg["similarity"] = float(data["similarity"])
             if "windowsVoice" in data:
                 cfg["windowsVoice"] = data["windowsVoice"]
+            if "neuralVoice" in data:
+                cfg["neuralVoice"] = data["neuralVoice"]
+            if "piperModel" in data:
+                cfg["piperModel"] = data["piperModel"]
             save_config(cfg)
             return self._send(200, {"ok": True})
 

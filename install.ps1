@@ -14,7 +14,7 @@ $srcHooks  = Join-Path $PSScriptRoot 'hooks'
 
 # 1. Copy the hook scripts.
 New-Item -ItemType Directory -Force -Path $hooksDir | Out-Null
-foreach ($f in 'speak-response.ps1','speak-worker.ps1','voice-guard.ps1') {
+foreach ($f in 'speak-response.ps1','speak-worker.ps1','voice-guard.ps1','tts-server.py') {
     Copy-Item (Join-Path $srcHooks $f) (Join-Path $hooksDir $f) -Force
     Write-Host "  copied $f" -ForegroundColor Cyan
 }

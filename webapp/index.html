@@ -91,7 +91,7 @@
     <div class="logo">🔊</div>
     <div>
       <h1>Claude Voice Mode</h1>
-      <div class="sub">Control panel · free Windows voice ⇄ premium ElevenLabs</div>
+      <div class="sub">Control panel · ElevenLabs ⇄ Microsoft neural ⇄ offline Piper ⇄ Windows</div>
     </div>
   </header>
 
@@ -113,15 +113,29 @@
         <div><b>Voice mode</b><div class="muted" style="font-size:12.5px">Claude reads replies aloud</div></div>
         <label class="switch"><input type="checkbox" id="swEnabled"><span class="slider"></span></label>
       </div>
-      <div class="row">
-        <div><b>Premium (ElevenLabs)</b><div class="muted" style="font-size:12.5px">Natural voice · uses credits</div></div>
-        <label class="switch"><input type="checkbox" id="swPremium"><span class="slider"></span></label>
-      </div>
-      <label class="lab">Free Windows fallback voice</label>
+      <label class="lab">Engine that reads replies</label>
+      <select id="engine">
+        <option value="elevenlabs">ElevenLabs — best quality · costs credits</option>
+        <option value="neural">Microsoft neural — natural · free · needs internet</option>
+        <option value="piper">Piper — natural · free · fully offline</option>
+        <option value="windows">Windows — robotic · always works</option>
+      </select>
+      <div class="muted" style="font-size:12.5px;margin-top:8px" id="engineNote"></div>
+
+      <label class="lab">Microsoft neural voice</label>
+      <select id="neuralVoice"><option value="">loading…</option></select>
+
+      <label class="lab">Piper voice (offline)</label>
+      <select id="piperModel"><option value="">none installed</option></select>
+
+      <label class="lab">Windows fallback voice</label>
       <select id="winVoice">
         <option value="Zira">Zira (smoother)</option>
         <option value="David">David</option>
+        <option value="Mark">Mark</option>
       </select>
+
+      <div style="margin-top:14px"><button class="btn ok" style="width:100%" onclick="testVoice()">🔈 Test the selected engine</button></div>
     </div>
 
     <!-- Credits -->
@@ -184,6 +198,7 @@
 
 <script>
 let VOICES = [], SELECTED = "";
+let NEURAL_PICK = "", PIPER_PICK = "", TTS = {neural:[], piper:[]};
 
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
   clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
@@ -195,18 +210,35 @@ async function api(path,method,body){
 }
 function setDot(id,cls){const e=document.getElementById(id);e.className='dot '+(cls||'');}
 
+const ENGINE_LABEL={elevenlabs:'ElevenLabs',neural:'Microsoft neural',piper:'Piper (offline)',windows:'Windows (robotic)'};
+const ENGINE_NOTE={
+  elevenlabs:'Highest quality. Burns ElevenLabs credits on every reply and needs internet.',
+  neural:'The same Andrew and Ava voices Narrator uses, reached through Microsoft’s free read-aloud service. No API key, but it needs internet. Windows keeps the Narrator copies locked to Narrator, so this is the way to actually use them.',
+  piper:'Runs entirely on your CPU with no internet and no cost. This is the engine to fine-tune on your own recorded voice later.',
+  windows:'The built-in robotic voices. Never fails, never sounds good. Always the last-resort fallback under every other engine.'
+};
+
 async function loadState(){
   const {data}=await api('/api/state');
   document.getElementById('swEnabled').checked=!!data.enabled;
-  document.getElementById('swPremium').checked=!!data.premium;
+  const engine=data.engine||'windows';
+  document.getElementById('engine').value=engine;
+  document.getElementById('engineNote').textContent=ENGINE_NOTE[engine]||'';
+  if(engine==='piper'&&!data.piperInstalled){
+    document.getElementById('engineNote').textContent=
+      'No Piper voice installed yet — run install-voices.ps1 to download one. Until then replies fall back to the Windows voice.';
+  }
   document.getElementById('winVoice').value=data.windowsVoice||'Zira';
   document.getElementById('modelId').value=data.modelId||'eleven_turbo_v2_5';
+  NEURAL_PICK=data.neuralVoice||'en-US-AndrewNeural';
+  PIPER_PICK=data.piperModel||'';
+  applyPicks();
   SELECTED=data.voiceId||"";
   // status chips
   setDot('dotEnabled',data.enabled?'green':'');
   document.getElementById('txtEnabled').textContent='Voice: '+(data.enabled?'ON':'off');
-  setDot('dotMode',data.premium?'purple':'green');
-  document.getElementById('txtMode').textContent='Mode: '+(data.premium?'Premium (ElevenLabs)':'Free (Windows)');
+  setDot('dotMode',engine==='windows'?'green':'purple');
+  document.getElementById('txtMode').textContent='Mode: '+(ENGINE_LABEL[engine]||engine);
   setDot('dotVoice',data.voiceName?'purple':'');
   document.getElementById('txtVoice').textContent='Voice pick: '+(data.voiceName||'none');
   setDot('dotKey',data.hasKey?'green':'red');
@@ -228,8 +260,43 @@ function renderStale(list){
 
 document.getElementById('swEnabled').addEventListener('change',async e=>{
   await api('/api/enabled','POST',{on:e.target.checked});toast(e.target.checked?'Voice ON':'Voice off');loadState();});
-document.getElementById('swPremium').addEventListener('change',async e=>{
-  await api('/api/premium','POST',{on:e.target.checked});toast(e.target.checked?'Premium ON':'Back to free Windows voice');loadState();});
+document.getElementById('engine').addEventListener('change',async e=>{
+  await api('/api/engine','POST',{engine:e.target.value});
+  toast('Engine: '+(ENGINE_LABEL[e.target.value]||e.target.value));loadState();});
+document.getElementById('neuralVoice').addEventListener('change',async e=>{
+  NEURAL_PICK=e.target.value;
+  await api('/api/voice','POST',{neuralVoice:e.target.value});toast('Neural voice: '+e.target.value);});
+document.getElementById('piperModel').addEventListener('change',async e=>{
+  PIPER_PICK=e.target.value;
+  await api('/api/voice','POST',{piperModel:e.target.value});
+  toast('Piper voice set');});
+
+// Populates both natural-voice dropdowns. The neural list comes from Microsoft;
+// the Piper list is whatever is actually on disk, so the panel never offers a
+// voice that would fail the moment you picked it.
+async function loadTtsVoices(){
+  const {ok,data}=await api('/api/tts-voices');
+  if(!ok)return;
+  TTS=data;
+  const ns=document.getElementById('neuralVoice');
+  ns.innerHTML=(data.neural||[]).map(v=>{
+    const short=v.name.replace(/^en-[A-Z]{2}-/,'').replace(/Neural$/,'');
+    const tags=v.tags?' — '+v.tags:'';
+    return `<option value="${v.name}">${short}${tags}</option>`;
+  }).join('')||'<option value="">none available</option>';
+
+  const ps=document.getElementById('piperModel');
+  ps.innerHTML=(data.piper||[]).map(v=>`<option value="${v.path}">${v.name}</option>`).join('')
+    ||'<option value="">none installed — run install-voices.ps1</option>';
+  applyPicks();
+}
+
+function applyPicks(){
+  const ns=document.getElementById('neuralVoice');
+  if(NEURAL_PICK&&[...ns.options].some(o=>o.value===NEURAL_PICK))ns.value=NEURAL_PICK;
+  const ps=document.getElementById('piperModel');
+  if(PIPER_PICK&&[...ps.options].some(o=>o.value===PIPER_PICK))ps.value=PIPER_PICK;
+}
 document.getElementById('winVoice').addEventListener('change',async e=>{
   await api('/api/voice','POST',{windowsVoice:e.target.value});toast('Fallback voice: '+e.target.value);});
 document.getElementById('modelId').addEventListener('change',async e=>{
@@ -309,7 +376,7 @@ async function testVoice(){
   toast('Speaking through Claude’s pipeline…');
 }
 
-loadState();
+loadTtsVoices().then(loadState);
 </script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-# start-webapp.ps1 — launch the Claude Voice Mode control panel in your browser.
+# start-webapp.ps1 -- launch the Claude Voice Mode control panel in your browser.
 # Serves a local dashboard (127.0.0.1) to toggle voice on/off, switch between the
 # free Windows voice and premium ElevenLabs, pick a voice, and watch your credits.
 
@@ -8,7 +8,7 @@ $port   = if ($env:VOICE_PANEL_PORT) { $env:VOICE_PANEL_PORT } else { '8770' }
 
 $url = "http://127.0.0.1:$port/"
 
-# Already running? Just open it — never start a second copy on the same port.
+# Already running? Just open it -- never start a second copy on the same port.
 $alive = $false
 try {
     Invoke-WebRequest -Uri "$url`api/state" -UseBasicParsing -TimeoutSec 2 | Out-Null
@@ -16,7 +16,7 @@ try {
 } catch { }
 
 if ($alive) {
-    Write-Host "Panel is already running — opening it." -ForegroundColor Green
+    Write-Host "Panel is already running -- opening it." -ForegroundColor Green
     Start-Process $url
     return
 }

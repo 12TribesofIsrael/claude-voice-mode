@@ -220,6 +220,71 @@ admin prompt:
 Then restart your terminals and `voice-set Mark`. You can also download more
 voices in **Windows Settings → Time & language → Speech → Manage voices**.
 
+Be warned that all of these are the same 2000s-era engine. They stitch together
+recorded fragments and model nothing about the rhythm or emphasis of a sentence,
+which is exactly why they sound robotic. Unlocking more of them gets you a
+different robot, not a better voice. For that, see the next section.
+
+---
+
+## Free natural voices (no ElevenLabs bill)
+
+There are two ways to sound natural without paying per character. Install both
+with one command — it takes a few minutes and about 120 MB:
+
+```powershell
+.\install-voices.ps1
+.\install.ps1            # refresh the installed hooks
+```
+
+Then pick an engine in the Voice Panel. The worker tries engines in order and
+falls through on any failure, so the robotic Windows voice is always underneath
+as the thing that cannot fail:
+
+**ElevenLabs → Microsoft neural → Piper → Windows**
+
+### Microsoft neural — natural, free, online
+
+The same **Andrew** and **Ava** voices Windows offers for Narrator, reached
+through Microsoft's free read-aloud service. No API key, no account, no credits.
+47 English voices with distinct personalities.
+
+> **Why not use the Narrator voices directly?** You can install them under
+> **Settings → Accessibility → Narrator → Add natural voices**, but no app can
+> drive them. The packages ship model data and nothing else: no speech engine,
+> and the COM class their token points at is not registered anywhere on the
+> machine. They are reachable by Narrator alone, by design. This engine gets you
+> the same voices from the service instead.
+
+Caveats worth knowing: it needs internet, and it is an undocumented endpoint
+Microsoft could change without notice. Treat it as a convenience, not a
+foundation — and think twice before building a paid product on it.
+
+### Piper — natural, free, fully offline
+
+Neural speech that runs on your CPU. No internet, no key, no cost per word, and
+a permissive license, so it is the safe one to ship. On a plain desktop CPU it
+synthesizes about ten times faster than real time, so it never makes you wait.
+
+It is also the engine you would **fine-tune on your own recorded voice** later.
+Record 30–60 minutes of clean audio, cut it into short clips, transcribe them,
+train once, and the panel entry just starts sounding like you.
+
+Pick a different voice model with:
+
+```powershell
+.\install-voices.ps1 -PiperVoice en_US-lessac-medium
+```
+
+### How the two stay fast
+
+Loading a voice model costs about three quarters of a second, and starting
+Python costs about half. The worker is launched fresh for every reply, so paying
+those per reply would be very noticeable. Instead `hooks/tts-server.py` runs as a
+small local server that keeps the model warm and answers over loopback. The
+worker starts it on first use, and it shuts itself down after 30 idle minutes.
+A warm sentence comes back in about half a second.
+
 ---
 
 ## When does it stay quiet on purpose?
