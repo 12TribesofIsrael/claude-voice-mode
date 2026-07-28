@@ -124,7 +124,7 @@ $txtFile = Join-Path $env:TEMP ('claude-voice-' + [guid]::NewGuid().ToString('N'
 Set-Content -LiteralPath $txtFile -Value $text -Encoding UTF8
 
 # 6. Launch the worker hidden and detached so the hook never blocks and no
-#    window flashes. Ordinary "powershell -File <script> <arg>" — nothing
+#    window flashes. Ordinary "powershell -File <script> <arg>" -- nothing
 #    obfuscated for the antivirus to trip on.
 $worker = Join-Path $PSScriptRoot 'speak-worker.ps1'
 Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList @(
