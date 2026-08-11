@@ -76,6 +76,7 @@ DEFAULT_CONFIG = {
     "readerVoiceId": "",
     "readerWindowsVoice": "",
     "readerRate": 1.0,
+    "readerLaymansTerms": False,
 }
 
 # Reader settings, listed once so the settings route cannot drift from the
@@ -87,6 +88,7 @@ READER_KEYS = (
     "readerVoiceId",
     "readerWindowsVoice",
     "readerRate",
+    "readerLaymansTerms",
 )
 
 # Shown when edge-tts is not importable, so the panel still offers real choices
@@ -542,6 +544,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_audio(f.read(), _mime, cached=True)
 
         text = doc["chunks"][index]["text"]
+        if cfg.get("readerLaymansTerms"):
+            text = docutil.simplify_to_laymans_terms(text)
         try:
             audio, mime, ext = synth.synthesize(text, engine, voice, cfg)
         except synth.SynthError as e:

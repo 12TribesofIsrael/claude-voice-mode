@@ -148,6 +148,20 @@
     <div class="pmeta" id="estimate" style="margin-top:10px"></div>
   </div>
 
+  <!-- ------------------------------------------------ reading options -->
+  <div class="card">
+    <h2>📖 Reading Options</h2>
+    <p class="hint">Adjust how the document is read aloud.</p>
+    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:14px">
+      <input type="checkbox" id="laymans" style="width:18px;height:18px;cursor:pointer">
+      <span>Simplify to layman's terms</span>
+    </label>
+    <p class="hint" id="laymansNote" style="margin-top:8px;display:none;color:#5d6779">
+      When enabled, technical terms will be converted to plain language before synthesis.
+      This may add a moment to the first playback.
+    </p>
+  </div>
+
   <!-- ------------------------------------------------ the document -->
   <div class="card hide" id="docCard">
     <h2 id="docTitle">Document</h2>
@@ -223,6 +237,7 @@ async function boot(){
   $('vmEngine').textContent=ENGINE_LABEL[data.voiceModeEngine]||data.voiceModeEngine;
   audio.playbackRate=parseFloat(data.settings.readerRate)||1;
   $('rate').value=String(audio.playbackRate);
+  $('laymans').checked=data.settings.readerLaymansTerms||false;
   if(!data.pdfSupported){
     $('openHint').innerHTML='Markdown and plain text. <b>PDF needs pdftotext</b>, which ships with Git for Windows.';
   }
@@ -330,6 +345,13 @@ async function saveVoice(value,quiet){
   if(!quiet)toast('Voice set');
 }
 $('voice').onchange=e=>saveVoice(e.target.value);
+$('laymans').onchange=async e=>{
+  STATE.settings.readerLaymansTerms=e.target.checked;
+  await api('/api/reader/settings','POST',{readerLaymansTerms:e.target.checked});
+  $('laymansNote').style.display=e.target.checked?'block':'none';
+  dropPrefetch();
+  toast(e.target.checked?'Layman\'s terms enabled':'Layman\'s terms disabled');
+};
 
 function showEstimate(){
   if(!DOC){$('estimate').textContent='';return}
