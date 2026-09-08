@@ -172,7 +172,7 @@ script are two doors to the *same* setting — you don't need to run anything
 before opening the panel. Just keep the little server window open while you
 use it; closing it stops the panel (voice mode itself stays as you left it).
 
-It opens a local dashboard (`http://127.0.0.1:8770`) where you can:
+It opens a local dashboard (`http://127.0.0.1:8772`) where you can:
 
 - toggle **voice on/off** and **free ⇄ premium**,
 - paste your **ElevenLabs API key** (stored locally, never committed),

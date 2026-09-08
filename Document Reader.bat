@@ -26,7 +26,7 @@ if not defined PY (
   exit /b 1
 )
 
-set "PORT=8770"
+set "PORT=8772"
 if defined VOICE_PANEL_PORT set "PORT=%VOICE_PANEL_PORT%"
 
 echo.

@@ -675,7 +675,7 @@ class PanelServer(ThreadingHTTPServer):
 
 
 def main():
-    port = int(os.environ.get("VOICE_PANEL_PORT", "8770"))
+    port = int(os.environ.get("VOICE_PANEL_PORT", "8772"))
     # make sure a config exists so the worker/panel agree on defaults
     if not os.path.exists(CONFIG_PATH):
         save_config(dict(DEFAULT_CONFIG))

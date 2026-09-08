@@ -4,7 +4,7 @@
 
 $ErrorActionPreference = 'Stop'
 $server = Join-Path $PSScriptRoot 'webapp\server.py'
-$port   = if ($env:VOICE_PANEL_PORT) { $env:VOICE_PANEL_PORT } else { '8770' }
+$port   = if ($env:VOICE_PANEL_PORT) { $env:VOICE_PANEL_PORT } else { '8772' }
 
 $url = "http://127.0.0.1:$port/"
 
