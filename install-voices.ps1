@@ -9,15 +9,19 @@
 #             no COM class), so we reach the same voices through Microsoft's
 #             free read-aloud service instead. No API key, but it needs internet.
 #
-# Safe to re-run. Downloads about 120 MB the first time for the Piper voice.
+# Safe to re-run. Downloads about 250 MB the first time for the three starter
+# Piper voices (a high-quality male, a female, and a British male). Every other
+# English voice Piper publishes - about 40 - can be added later from the
+# control panel: Voice Panel.bat, then "More voices" under the Piper dropdown.
 #
 # Usage:
-#   .\install-voices.ps1                      # default voice (ryan, high quality)
+#   .\install-voices.ps1                      # starter set of three voices
 #   .\install-voices.ps1 -PiperVoice en_US-lessac-medium
+#   .\install-voices.ps1 -PiperVoice en_US-ryan-high, en_US-amy-medium
 #   .\install-voices.ps1 -SkipPiper           # neural voices only, no download
 
 param(
-    [string]$PiperVoice = 'en_US-ryan-high',
+    [string[]]$PiperVoice = @('en_US-ryan-high', 'en_US-hfc_female-medium', 'en_GB-alan-medium'),
     [switch]$SkipPiper
 )
 
@@ -65,18 +69,30 @@ if (-not $SkipPiper) {
     if ($piperOk) {
         Write-Host "  ok" -ForegroundColor Green
         New-Item -ItemType Directory -Force -Path $piperDir | Out-Null
-        $modelPath = Join-Path $piperDir "$PiperVoice.onnx"
-        if (Test-Path -LiteralPath $modelPath) {
-            Write-Host "  voice $PiperVoice already downloaded" -ForegroundColor DarkGray
-        } else {
-            Write-Host "  downloading voice $PiperVoice (about 120 MB, one time)..." -ForegroundColor Cyan
-            & $python -m piper.download_voices $PiperVoice --data-dir $piperDir 2>&1 | Out-Null
-            if (-not (Test-Path -LiteralPath $modelPath)) {
-                Write-Host "  download failed -- Piper will stay off" -ForegroundColor Yellow
-                $piperOk = $false
-            } else {
-                Write-Host "  downloaded" -ForegroundColor Green
+        $got = @()
+        foreach ($v in $PiperVoice) {
+            $path = Join-Path $piperDir "$v.onnx"
+            if (Test-Path -LiteralPath $path) {
+                Write-Host "  voice $v already downloaded" -ForegroundColor DarkGray
+                $got += $path
+                continue
             }
+            Write-Host "  downloading voice $v (60-140 MB, one time)..." -ForegroundColor Cyan
+            & $python -m piper.download_voices $v --data-dir $piperDir 2>&1 | Out-Null
+            if (Test-Path -LiteralPath $path) {
+                Write-Host "  downloaded" -ForegroundColor Green
+                $got += $path
+            } else {
+                Write-Host "  download of $v failed -- skipping it" -ForegroundColor Yellow
+            }
+        }
+        if ($got.Count -eq 0) {
+            Write-Host "  no voice downloaded -- Piper will stay off" -ForegroundColor Yellow
+            $piperOk = $false
+        } else {
+            # First requested voice that made it becomes the default pick, unless a
+            # pick already exists and still points at a real file.
+            $modelPath = $got[0]
         }
     } else {
         Write-Host "  failed -- Piper will stay off" -ForegroundColor Yellow
@@ -99,8 +115,9 @@ if (-not $cfg.ContainsKey('neuralVoice') -or -not $cfg['neuralVoice']) {
 }
 $cfg['piper'] = $piperOk
 if ($piperOk) {
-    $cfg['piperModel'] = $modelPath
-    $cfg['piperDir']   = $piperDir
+    $keep = $cfg.ContainsKey('piperModel') -and $cfg['piperModel'] -and (Test-Path -LiteralPath $cfg['piperModel'])
+    if (-not $keep) { $cfg['piperModel'] = $modelPath }
+    $cfg['piperDir'] = $piperDir
 }
 if (-not $cfg.ContainsKey('ttsPort')) { $cfg['ttsPort'] = 8771 }
 $cfg['python'] = $python
@@ -115,7 +132,8 @@ Write-Host ""
 Write-Host "Engines now available, best first:" -ForegroundColor Green
 Write-Host ("  ElevenLabs : " + $(if ($cfg['apiKey']) { 'key saved' } else { 'no key (off)' }))
 Write-Host ("  Neural     : " + $(if ($neuralOk) { "on  -> $($cfg['neuralVoice'])  (needs internet)" } else { 'off' }))
-Write-Host ("  Piper      : " + $(if ($piperOk)  { "on  -> $PiperVoice  (offline)" } else { 'off' }))
+Write-Host ("  Piper      : " + $(if ($piperOk)  { "on  -> $([IO.Path]::GetFileNameWithoutExtension($cfg['piperModel']))  (offline, $($got.Count) voice(s) on disk)" } else { 'off' }))
 Write-Host  "  Windows    : always on as the last-resort fallback"
 Write-Host ""
 Write-Host "Run .\install.ps1 to refresh the installed hooks, then open the Voice Panel to switch engines." -ForegroundColor Green
+Write-Host "Want more offline voices? Voice Panel -> 'More voices' under the Piper dropdown lists all ~40." -ForegroundColor Green

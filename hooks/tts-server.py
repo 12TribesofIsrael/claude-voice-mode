@@ -138,6 +138,28 @@ class NeuralSpeaker:
 
 
 PIPER = None
+PIPER_SWAP = threading.Lock()
+
+
+def current_piper():
+    """The loaded Piper speaker, reloaded if the control panel picked a new voice.
+
+    This server stays warm for 30 idle minutes and used to load one model at
+    start-up and never look again — so choosing a different offline voice in the
+    panel did nothing until the server happened to exit. Re-reading the config
+    costs microseconds; loading a new model costs under a second, once.
+    """
+    global PIPER
+    model = resolve_model(load_config())
+    if not model:
+        return PIPER
+    with PIPER_SWAP:
+        if PIPER is None or os.path.abspath(PIPER.model_path) != os.path.abspath(model):
+            try:
+                PIPER = PiperSpeaker(model)
+            except Exception as e:  # noqa: BLE001 — keep the old voice rather than go silent
+                print(f"Could not load Piper voice {model} ({e})", file=sys.stderr)
+    return PIPER
 NEURAL = None
 
 
@@ -193,9 +215,10 @@ class Handler(BaseHTTPRequestHandler):
                 audio = NEURAL.synthesize(text, data.get("voice"))
                 ctype = "audio/mpeg"
             else:
-                if not PIPER:
+                speaker = current_piper()
+                if not speaker:
                     return self._send(503, {"error": "piper_unavailable"})
-                audio = PIPER.synthesize(text)
+                audio = speaker.synthesize(text)
                 ctype = "audio/wav"
         except Exception as e:  # noqa: BLE001 — worker falls back to the Windows voice
             return self._send(500, {"error": str(e)})

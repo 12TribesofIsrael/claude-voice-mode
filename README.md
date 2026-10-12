@@ -234,7 +234,8 @@ different robot, not a better voice. For that, see the next section.
 ## Free natural voices (no ElevenLabs bill)
 
 There are two ways to sound natural without paying per character. Install both
-with one command — it takes a few minutes and about 120 MB:
+with one command — it takes a few minutes and about 250 MB (three starter Piper
+voices plus the neural client):
 
 ```powershell
 .\install-voices.ps1
@@ -274,10 +275,24 @@ It is also the engine you would **fine-tune on your own recorded voice** later.
 Record 30–60 minutes of clean audio, cut it into short clips, transcribe them,
 train once, and the panel entry just starts sounding like you.
 
-Pick a different voice model with:
+The installer downloads three starter voices: **Ryan** (US male, high quality),
+**HFC female** (US female) and **Alan** (British male). Piper publishes about
+**40 English voices** in all, and every one is a 60–140 MB file that downloads
+once and then never needs the internet again.
+
+**To add more, open the Voice Panel and click “More voices”** under the Piper
+dropdown. It lists the whole catalog with region, quality and size, downloads
+straight into the voices folder with a progress bar, and the new voice appears in
+the dropdown — and in the Document Reader — the moment it lands. Picking a
+different Piper voice takes effect on the very next reply; the warm speech server
+notices the change and swaps models without a restart. The same list lets you
+delete a voice you no longer want.
+
+From the command line the installer does the same thing, one or many at a time:
 
 ```powershell
 .\install-voices.ps1 -PiperVoice en_US-lessac-medium
+.\install-voices.ps1 -PiperVoice en_US-amy-medium, en_GB-cori-high
 ```
 
 ### How the two stay fast

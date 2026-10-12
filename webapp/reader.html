@@ -145,6 +145,11 @@
     <div class="engines" id="engines"></div>
     <label class="lab" id="voiceLabel">Voice</label>
     <select id="voice"></select>
+    <div id="moreVoices" style="display:none;font-size:12.5px;margin-top:6px" class="muted">
+      Only the voices downloaded to this PC are listed.
+      <a href="/#piper" target="_blank" style="color:var(--accent)">Get more offline voices</a> in the control panel,
+      then <a href="#" onclick="loadVoices();return false" style="color:var(--accent)">refresh this list</a>.
+    </div>
     <div class="pmeta" id="estimate" style="margin-top:10px"></div>
   </div>
 
@@ -242,9 +247,17 @@ async function boot(){
     $('openHint').innerHTML='Markdown and plain text. <b>PDF needs pdftotext</b>, which ships with Git for Windows.';
   }
   renderLibrary();
+  await loadVoices(true);
+}
+// Re-fetches the voice lists. Called at boot and after the user downloads a
+// new Piper model in the control panel, so the reader sees it without a reload.
+async function loadVoices(quiet){
+  const st=await api('/api/reader/state');
+  if(st.ok)STATE.piperInstalled=st.data.piperInstalled;
   const v=await api('/api/reader/voices');
   if(v.ok)VOICES=v.data;
   renderEngines();
+  if(!quiet)toast('Voice list refreshed');
 }
 
 // ---------------------------------------------------------------- library
@@ -311,6 +324,7 @@ function renderVoiceList(){
     cur=STATE.settings.readerWindowsVoice;
   }
   $('voiceLabel').textContent=list.length?(ENGINE_LABEL[e]+' voice — '+list.length+' available'):'Voice';
+  $('moreVoices').style.display=e==='piper'?'block':'none';
   if(!list.length){
     sel.innerHTML='<option>No voices available for this engine</option>';return;
   }

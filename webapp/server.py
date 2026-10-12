@@ -17,9 +17,12 @@ Run:  python webapp/server.py   (or use start-webapp.ps1)
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -166,6 +169,197 @@ def piper_voices(cfg):
     except OSError:
         return []
     return [{"name": os.path.splitext(n)[0], "path": os.path.join(folder, n)} for n in names]
+
+
+def piper_dir(cfg):
+    return cfg.get("piperDir") or os.path.join(HOOKS_DIR, "piper")
+
+
+# --------------------------------------------------------------------------- #
+# Piper voice catalog + downloads
+# --------------------------------------------------------------------------- #
+# install-voices.ps1 fetches a single model, and piper_voices() only ever lists
+# what is on disk — so a fresh install shows exactly one offline voice and no
+# way to get another without running a script by hand. The catalog below is the
+# full list Piper publishes (about 40 English voices), and the panel downloads
+# straight into the piper folder so the dropdown grows without leaving the page.
+PIPER_CATALOG_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main/voices.json?download=true"
+PIPER_FILE_URL = (
+    "https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+    "{family}/{code}/{name}/{quality}/{code}-{name}-{quality}{ext}?download=true"
+)
+PIPER_CATALOG_TTL = 24 * 3600  # the list changes a few times a year at most
+
+# Offered when the catalog cannot be fetched and no cached copy exists. Real
+# names from the published list, so a download attempt will actually work once
+# the network is back.
+FALLBACK_PIPER_CATALOG = [
+    ("en_US-ryan-high", "high", 121), ("en_US-ryan-medium", "medium", 63),
+    ("en_US-lessac-high", "high", 114), ("en_US-lessac-medium", "medium", 63),
+    ("en_US-hfc_female-medium", "medium", 63), ("en_US-hfc_male-medium", "medium", 63),
+    ("en_US-amy-medium", "medium", 63), ("en_US-joe-medium", "medium", 63),
+    ("en_US-kristin-medium", "medium", 64), ("en_US-john-medium", "medium", 64),
+    ("en_US-bryce-medium", "medium", 64), ("en_US-norman-medium", "medium", 64),
+    ("en_US-libritts_r-medium", "medium", 79), ("en_US-ljspeech-high", "high", 114),
+    ("en_GB-cori-high", "high", 114), ("en_GB-alan-medium", "medium", 63),
+    ("en_GB-alba-medium", "medium", 63), ("en_GB-jenny_dioco-medium", "medium", 63),
+    ("en_GB-northern_english_male-medium", "medium", 63), ("en_GB-aru-medium", "medium", 77),
+]
+
+PIPER_JOBS = {}  # voice key -> {"status", "done", "total", "error"}
+PIPER_JOBS_LOCK = threading.Lock()
+
+
+def _catalog_cache_path(cfg):
+    return os.path.join(piper_dir(cfg), "voices-catalog.json")
+
+
+def _fetch_piper_catalog(cfg):
+    """Raw voices.json from Piper's model repo, cached on disk for a day."""
+    path = _catalog_cache_path(cfg)
+    try:
+        if time.time() - os.path.getmtime(path) < PIPER_CATALOG_TTL:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        pass
+    try:
+        req = urllib.request.Request(PIPER_CATALOG_URL, headers={"User-Agent": "claude-voice-mode"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            raw = r.read()
+        data = json.loads(raw.decode("utf-8"))
+        os.makedirs(piper_dir(cfg), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(raw)
+        return data
+    except Exception:  # noqa: BLE001 - offline is normal for an offline engine
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)  # stale beats nothing
+        except (OSError, json.JSONDecodeError):
+            return None
+
+
+def piper_catalog(cfg):
+    """English voices Piper offers, each marked installed or not.
+
+    Returns {"voices": [...], "source": "live"|"cache"|"fallback"}.
+    """
+    installed = {v["name"] for v in piper_voices(cfg)}
+    raw = _fetch_piper_catalog(cfg)
+    out = []
+    if raw:
+        for key, v in raw.items():
+            if not key.startswith("en_"):
+                continue
+            size = sum(
+                f.get("size_bytes", 0) for p, f in (v.get("files") or {}).items() if p.endswith(".onnx")
+            )
+            lang = v.get("language") or {}
+            out.append({
+                "key": key,
+                "name": v.get("name") or key,
+                "quality": v.get("quality") or "",
+                "sizeMb": round(size / 1e6),
+                "region": lang.get("country_english") or lang.get("region") or "",
+                "speakers": v.get("num_speakers") or 1,
+            })
+        source = "live"
+    else:
+        out = [
+            {"key": k, "name": k.split("-")[1], "quality": q, "sizeMb": mb,
+             "region": "United States" if k.startswith("en_US") else "United Kingdom", "speakers": 1}
+            for k, q, mb in FALLBACK_PIPER_CATALOG
+        ]
+        source = "fallback"
+    for v in out:
+        v["installed"] = v["key"] in installed
+    # Best quality first within a region, US before GB — the order you would browse.
+    rank = {"high": 0, "medium": 1, "low": 2, "x_low": 3}
+    out.sort(key=lambda v: (v["key"][:5] != "en_US", rank.get(v["quality"], 9), v["name"]))
+    return {"voices": out, "source": source}
+
+
+def _piper_urls(key):
+    m = re.match(r"^(?P<family>[^_]+)_(?P<region>[^-]+)-(?P<name>[^-]+)-(?P<quality>.+)$", key)
+    if not m:
+        return None
+    args = {
+        "family": m.group("family"),
+        "code": m.group("family") + "_" + m.group("region"),
+        "name": m.group("name"),
+        "quality": m.group("quality"),
+    }
+    return (PIPER_FILE_URL.format(ext=".onnx", **args), PIPER_FILE_URL.format(ext=".onnx.json", **args))
+
+
+def _download_piper_voice(key, folder):
+    """Worker thread body. Writes .part files and renames only when complete,
+    so a half-downloaded model never shows up in the voice list."""
+    job = PIPER_JOBS[key]
+    model_url, cfg_url = _piper_urls(key)
+    model_path = os.path.join(folder, key + ".onnx")
+    try:
+        os.makedirs(folder, exist_ok=True)
+        for url, dest in ((cfg_url, model_path + ".json"), (model_url, model_path)):
+            req = urllib.request.Request(url, headers={"User-Agent": "claude-voice-mode"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                total = int(r.headers.get("Content-Length") or 0)
+                if dest == model_path:
+                    job["total"] = total
+                with open(dest + ".part", "wb") as f:
+                    while True:
+                        chunk = r.read(1024 * 256)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        if dest == model_path:
+                            job["done"] += len(chunk)
+            os.replace(dest + ".part", dest)
+        job["status"] = "done"
+    except Exception as e:  # noqa: BLE001 - shown in the panel
+        job["status"] = "error"
+        job["error"] = str(e)
+        for p in (model_path + ".part", model_path + ".json.part"):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+
+def start_piper_download(key, cfg):
+    if not _piper_urls(key):
+        return {"error": "bad_voice_name"}
+    with PIPER_JOBS_LOCK:
+        job = PIPER_JOBS.get(key)
+        if job and job["status"] == "running":
+            return {"started": False, "job": job}
+        PIPER_JOBS[key] = job = {"status": "running", "done": 0, "total": 0, "error": ""}
+    threading.Thread(target=_download_piper_voice, args=(key, piper_dir(cfg)), daemon=True).start()
+    return {"started": True, "job": job}
+
+
+def delete_piper_voice(key, cfg):
+    """Remove a downloaded model. Refuses anything outside the piper folder."""
+    folder = os.path.abspath(piper_dir(cfg))
+    base = os.path.abspath(os.path.join(folder, key + ".onnx"))
+    if os.path.dirname(base) != folder or not os.path.isfile(base):
+        return False
+    for p in (base, base + ".json"):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+    # Don't leave the config pointing at a file that is gone.
+    changed = False
+    for k in ("piperModel", "readerPiperModel"):
+        if os.path.abspath(cfg.get(k) or "") == base:
+            left = piper_voices(cfg)
+            cfg[k] = left[0]["path"] if left else ""
+            changed = True
+    if changed:
+        save_config(cfg)
+    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -353,6 +547,14 @@ class Handler(BaseHTTPRequestHandler):
                 200, {"neural": neural_voices(), "piper": piper_voices(cfg)}
             )
 
+        if path == "/api/piper/catalog":
+            return self._send(200, piper_catalog(load_config()))
+
+        if path == "/api/piper/downloads":
+            with PIPER_JOBS_LOCK:
+                jobs = {k: dict(v) for k, v in PIPER_JOBS.items()}
+            return self._send(200, {"jobs": jobs, "installed": piper_voices(load_config())})
+
         if self.path == "/api/voices":
             cfg = load_config()
             if not cfg.get("apiKey"):
@@ -459,6 +661,14 @@ class Handler(BaseHTTPRequestHandler):
                 cfg["piperModel"] = data["piperModel"]
             save_config(cfg)
             return self._send(200, {"ok": True})
+
+        if self.path == "/api/piper/download":
+            res = start_piper_download((data.get("voice") or "").strip(), load_config())
+            return self._send(400 if "error" in res else 200, res)
+
+        if self.path == "/api/piper/delete":
+            ok = delete_piper_voice((data.get("voice") or "").strip(), load_config())
+            return self._send(200 if ok else 404, {"ok": ok})
 
         if self.path == "/api/test":
             text = data.get("text") or "This is a preview of the selected voice for Claude Voice Mode."
