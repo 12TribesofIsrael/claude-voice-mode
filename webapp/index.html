@@ -133,6 +133,8 @@
         <option value="windows">Windows — robotic · always works</option>
       </select>
       <div class="muted" style="font-size:12.5px;margin-top:8px" id="engineNote"></div>
+      <div id="engineDown" style="display:none;margin-top:10px;padding:10px 12px;border-radius:10px;background:#3a1620;border:1px solid #a33;font-size:12.5px;line-height:1.45"></div>
+      <div class="muted" style="font-size:12px;margin-top:8px" id="lastSpoken"></div>
 
       <label class="lab">Microsoft neural voice</label>
       <select id="neuralVoice"><option value="">loading…</option></select>
@@ -271,7 +273,39 @@ async function loadState(){
   document.getElementById('txtKey').textContent='Key: '+(data.hasKey?data.keyMasked:'not set');
   document.getElementById('keyStatus').textContent=data.hasKey?('Saved key '+data.keyMasked):'No key saved yet.';
   renderStale(data.staleHooks||[]);
+  renderHealth(data);
   if(data.hasKey){loadCredits();}
+}
+
+// Says what the last reply was really spoken with. The worker falls through
+// engines in silence, so without this a dead engine looks like "the voice pick
+// does nothing" — every reply comes out in the same fallback voice.
+function describeSpoken(ls){
+  if(!ls)return '';
+  const eng=ENGINE_LABEL[ls.spoke]||ls.spoke||'nothing';
+  let s='Last reply spoke with: <b>'+esc(eng)+'</b>'+(ls.voice?' ('+esc(ls.voice)+')':'');
+  if(ls.fellBack&&ls.fellBack.length){
+    s+=' — skipped '+ls.fellBack.map(f=>'<b>'+esc(ENGINE_LABEL[f.engine]||f.engine)+'</b>: '+esc(f.error)).join('; ');
+  }
+  return s+(ls.when?' <span style="opacity:.7">· '+esc(ls.when)+'</span>':'');
+}
+function renderHealth(data){
+  document.getElementById('lastSpoken').innerHTML=describeSpoken(data.lastSpoken);
+  const box=document.getElementById('engineDown');
+  const h=data.neuralHealth;
+  if(data.engine==='neural'&&h&&h.ok===false){
+    box.style.display='block';
+    box.innerHTML='<b>⚠ Microsoft neural is not working right now.</b><br>'+esc(h.error||'unknown error')+
+      '<br><span style="opacity:.85">Your replies are falling back to the next engine, so changing the neural voice above has no audible effect. '+
+      'Switch the engine to <b>Piper</b> to hear the offline voice you pick.</span> '+
+      '<button class="btn sm" style="margin-top:8px" onclick="recheckNeural()">↻ Re-check</button>';
+  }else{box.style.display='none';}
+}
+async function recheckNeural(){
+  toast('Checking Microsoft neural…');
+  const {data}=await api('/api/neural-health?force=1');
+  toast(data.ok?'Microsoft neural is working again':'Still down: '+(data.error||'').slice(0,80));
+  loadState();
 }
 
 function renderStale(list){
@@ -487,8 +521,15 @@ async function selectVoice(v){
 function preview(url){if(!url){toast('No preview for this voice');return;}const a=document.getElementById('preview');a.src=url;a.play();}
 async function testVoice(){
   const text=document.getElementById('testText').value||'Testing the selected voice.';
-  await api('/api/test','POST',{text});
   toast('Speaking through Claude’s pipeline…');
+  const {data}=await api('/api/test','POST',{text});
+  const ls=data&&data.lastSpoken;
+  if(ls&&ls.spoke){
+    const eng=ENGINE_LABEL[ls.spoke]||ls.spoke;
+    toast(ls.fellBack&&ls.fellBack.length?('Spoke with '+eng+' after '+ls.fellBack.map(f=>ENGINE_LABEL[f.engine]||f.engine).join(', ')+' failed'):('Spoke with '+eng));
+    document.getElementById('lastSpoken').innerHTML=describeSpoken(ls);
+  }
+  loadState();
 }
 
 loadTtsVoices().then(loadState);

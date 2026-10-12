@@ -363,6 +363,102 @@ def delete_piper_voice(key, cfg):
 
 
 # --------------------------------------------------------------------------- #
+# engine health: what actually spoke, and whether neural is reachable
+# --------------------------------------------------------------------------- #
+# The worker tries engines top-down and falls through in silence, so when the
+# chosen engine is broken every reply comes out in the fallback voice and the
+# panel still shows the pick you made. These two functions make that visible.
+DEBUG_LOG = os.path.join(tempfile.gettempdir(), "claude-voice-debug.log")
+
+_NEURAL_HEALTH = {"at": 0.0, "ok": None, "error": ""}
+_NEURAL_HEALTH_TTL = 600  # re-probe every ten minutes, or on demand
+
+
+def last_spoken():
+    """Parse the last reply's block of the worker log.
+
+    Returns {"when", "spoke", "voice", "fellBack": [{"engine", "error"}]} or
+    None when the log has no header yet (old worker, or never spoken).
+    """
+    try:
+        with open(DEBUG_LOG, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.read().splitlines()[-400:]
+    except OSError:
+        return None
+    start = None
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].startswith("--- "):
+            start = i
+            break
+    if start is None:
+        return None
+    out = {"when": lines[start].strip("- "), "spoke": "", "voice": "", "fellBack": []}
+    for ln in lines[start + 1:]:
+        t = ln.strip()
+        m = re.match(r"^(\w+) spoke ok=True(?: voice=(.+?))?(?: model=\S+)?$", t, re.I)
+        if m:
+            eng = m.group(1).lower()
+            out["spoke"] = "elevenlabs" if eng == "premium" else eng
+            out["voice"] = m.group(2) or ""
+            continue
+        m = re.match(r"^(\w+) error -> falling back: (.*)$", t, re.I)
+        if m:
+            eng = m.group(1).lower()
+            out["fellBack"].append({
+                "engine": "elevenlabs" if eng == "premium" else eng,
+                "error": m.group(2),
+            })
+            continue
+        if t.startswith("tts server") or t.endswith("empty audio"):
+            out["fellBack"].append({"engine": "local", "error": t})
+    return out
+
+
+def neural_health(force=False):
+    """Can Microsoft's read-aloud service be reached right now?
+
+    A real one-word synthesis, not a ping: the voice list stays up even when the
+    websocket is refused (which is exactly what happened in October 2026 when
+    Microsoft changed its anti-abuse token and every edge-tts install got 403s).
+    """
+    now = time.time()
+    if not force and _NEURAL_HEALTH["ok"] is not None and now - _NEURAL_HEALTH["at"] < _NEURAL_HEALTH_TTL:
+        return dict(_NEURAL_HEALTH)
+    ok, err = False, ""
+    try:
+        import asyncio
+
+        import edge_tts
+
+        async def run():
+            comm = edge_tts.Communicate("Hi.", DEFAULT_CONFIG["neuralVoice"])
+            async for part in comm.stream():
+                if part["type"] == "audio" and part["data"]:
+                    return True
+            return False
+
+        loop = asyncio.new_event_loop()
+        try:
+            ok = loop.run_until_complete(asyncio.wait_for(run(), timeout=12))
+        finally:
+            loop.close()
+        if not ok:
+            err = "no audio returned"
+    except ImportError:
+        err = "edge-tts is not installed"
+    except Exception as e:  # noqa: BLE001 - the message is the point
+        err = str(e)
+        m = re.search(r"\b(\d{3})\b", err)
+        if m and m.group(1) == "403":
+            err = ("Microsoft refused the connection (403). This is a known outage: Microsoft changed "
+                   "its anti-abuse token on 10 Oct 2026 and every edge-tts install is affected. "
+                   "Fix: upgrade edge-tts when a release ships (pip install -U edge-tts). "
+                   "Until then pick Piper for offline voices or ElevenLabs.")
+    _NEURAL_HEALTH.update({"at": now, "ok": bool(ok), "error": err})
+    return dict(_NEURAL_HEALTH)
+
+
+# --------------------------------------------------------------------------- #
 # config helpers
 # --------------------------------------------------------------------------- #
 def load_config():
@@ -472,7 +568,7 @@ def speak_preview(text):
     fd, path = tempfile.mkstemp(prefix="claude-voice-", suffix=".txt")
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(text)
-    subprocess.Popen(
+    return subprocess.Popen(
         [
             "powershell.exe",
             "-NoProfile",
@@ -539,7 +635,14 @@ class Handler(BaseHTTPRequestHandler):
             safe["staleHooks"] = stale_hooks()
             safe["engine"] = engine_of(cfg)
             safe["piperInstalled"] = bool(piper_voices(cfg))
+            safe["lastSpoken"] = last_spoken()
+            # Only probe the service when it is the engine in use; a probe costs
+            # a network round trip and the answer is irrelevant otherwise.
+            safe["neuralHealth"] = neural_health() if safe["engine"] == "neural" else None
             return self._send(200, safe)
+
+        if path == "/api/neural-health":
+            return self._send(200, neural_health(force="force" in query))
 
         if self.path == "/api/tts-voices":
             cfg = load_config()
@@ -672,8 +775,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/api/test":
             text = data.get("text") or "This is a preview of the selected voice for Claude Voice Mode."
-            speak_preview(text)
-            return self._send(200, {"ok": True})
+            proc = speak_preview(text)
+            # Wait for the worker so the answer can say which engine really spoke.
+            # The preview sentence is short; 90 s covers a cold model load plus
+            # two online engines timing out before the fallback.
+            try:
+                proc.wait(timeout=90)
+            except subprocess.TimeoutExpired:
+                pass
+            return self._send(200, {"ok": True, "lastSpoken": last_spoken()})
 
         return self._send(404, {"error": "not_found"})
 

@@ -248,6 +248,11 @@ as the thing that cannot fail:
 
 **ElevenLabs → Microsoft neural → Piper → Windows**
 
+Piper is tried whenever a model is on disk, whichever engine you picked, so an
+online engine failing lands on a natural offline voice rather than the robotic
+one. The panel shows **what the last reply really spoke with**, and which engines
+were skipped and why, right under the engine picker.
+
 ### Microsoft neural — natural, free, online
 
 The same **Andrew** and **Ava** voices Windows offers for Narrator, reached
@@ -264,6 +269,15 @@ through Microsoft's free read-aloud service. No API key, no account, no credits.
 Caveats worth knowing: it needs internet, and it is an undocumented endpoint
 Microsoft could change without notice. Treat it as a convenience, not a
 foundation — and think twice before building a paid product on it.
+
+> **Outage, October 2026.** Microsoft changed its anti-abuse token on 10 Oct 2026
+> and every `edge-tts` install started getting `403` on the speech websocket (the
+> voice *list* still loads, which makes it look fine). Replies silently fell back
+> to the next engine, so changing the neural voice appeared to do nothing. The
+> panel now probes the service and shows a red warning on the engine card when
+> this is happening, and the **Test** button reports which engine really spoke.
+> Fix when upstream ships one: `pip install -U edge-tts`, then **Re-check** in the
+> panel. Until then use Piper (offline) or ElevenLabs.
 
 ### Piper — natural, free, fully offline
 

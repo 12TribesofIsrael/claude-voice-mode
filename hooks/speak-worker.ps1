@@ -28,6 +28,11 @@ $text = Get-Content -LiteralPath $File -Raw
 Remove-Item -LiteralPath $File -Force
 if ([string]::IsNullOrWhiteSpace($text)) { exit }
 
+# One header per reply so the control panel can read back which engine really
+# spoke and why the ones above it were skipped. Without this a dead engine
+# falls through in silence and every reply sounds like the same fallback voice.
+Add-Content -LiteralPath $dbg -Value ("--- {0} ---" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
+
 # ---- Load optional premium config -----------------------------------------
 $cfg = $null
 $cfgFile = Join-Path $PSScriptRoot 'voice-config.json'
@@ -203,7 +208,8 @@ function Speak-Local([string]$text, $cfg, [string]$engine) {
         }
         $ok = Play-AudioFile $out
         Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
-        Add-Content -LiteralPath $dbg -Value ("  {0} spoke ok={1}" -f $engine, $ok)
+        $voiceUsed = if ($engine -eq 'neural') { [string]$cfg.neuralVoice } else { [IO.Path]::GetFileNameWithoutExtension([string]$cfg.piperModel) }
+        Add-Content -LiteralPath $dbg -Value ("  {0} spoke ok={1} voice={2}" -f $engine, $ok, $voiceUsed)
         return $ok
     } catch {
         Add-Content -LiteralPath $dbg -Value ("  {0} error -> falling back: {1}" -f $engine, $_.Exception.Message)
@@ -223,7 +229,14 @@ if ($cfg -and $cfg.neural) {
 
 # Piper: offline, on-CPU, free, and the engine we would fine-tune on your own
 # recorded voice later. Works with no network at all.
-if ($cfg -and $cfg.piper) {
+#
+# Tried whenever a model is on disk, not only when it is the chosen engine. The
+# panel's engine picker turns the piper flag off when you choose neural or
+# ElevenLabs, and without this clause an online engine failing would skip the
+# natural offline voice you installed and land on the robotic Windows one.
+$piperModelOnDisk = $false
+if ($cfg -and $cfg.piperModel -and (Test-Path -LiteralPath ([string]$cfg.piperModel))) { $piperModelOnDisk = $true }
+if ($cfg -and ($cfg.piper -or $piperModelOnDisk)) {
     if (Speak-Local $text $cfg 'piper') { exit }
 }
 
@@ -246,4 +259,5 @@ if ($want) {
     if ($match) { $s.SelectVoice($match.VoiceInfo.Name) }
 }
 
+Add-Content -LiteralPath $dbg -Value ("  windows spoke ok=True voice={0}" -f $s.Voice.Name)
 $s.Speak($text)
