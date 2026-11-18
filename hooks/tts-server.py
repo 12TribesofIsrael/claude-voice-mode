@@ -50,6 +50,8 @@ CONFIG_PATH = os.path.join(HOOKS_DIR, "voice-config.json")
 DEFAULT_PORT = 8771
 DEFAULT_IDLE_TIMEOUT = 1800  # seconds without a request before we exit
 DEFAULT_NEURAL_VOICE = "en-US-AndrewNeural"
+NEURAL_ATTEMPTS = 3
+NEURAL_ATTEMPT_TIMEOUT = 25  # seconds per attempt; 3 x 25 fits the worker's 90
 
 # Longest text we synthesize in one call. Spoken replies are short; this only
 # stops a runaway paste from pinning the CPU for minutes.
@@ -130,11 +132,27 @@ class NeuralSpeaker:
                     chunks.append(part["data"])
             return b"".join(chunks)
 
-        loop = asyncio.new_event_loop()
-        try:
-            return loop.run_until_complete(run())
-        finally:
-            loop.close()
+        # The read-aloud service fails intermittently: about one request in six
+        # comes back "No audio was received" or simply hangs, and the very next
+        # request for the same text works. Without a retry each of those drops
+        # the reply to the fallback voice. Three bounded attempts stay inside
+        # the worker's 90 second request timeout.
+        last_error = None
+        for attempt in range(NEURAL_ATTEMPTS):
+            loop = asyncio.new_event_loop()
+            try:
+                audio = loop.run_until_complete(
+                    asyncio.wait_for(run(), timeout=NEURAL_ATTEMPT_TIMEOUT)
+                )
+                if audio:
+                    return audio
+                last_error = RuntimeError("empty_audio")
+            except Exception as e:  # noqa: BLE001 - retried, then re-raised below
+                last_error = e
+            finally:
+                loop.close()
+            time.sleep(0.4)
+        raise last_error
 
 
 PIPER = None
